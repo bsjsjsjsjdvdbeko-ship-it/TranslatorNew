@@ -16,7 +16,7 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
-import com.google.android.material.card.MaterialCardView
+import android.widget.FrameLayout
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,7 +25,7 @@ import kotlinx.coroutines.launch
 
 class OverlayService : Service() {
     private var wm: WindowManager? = null
-    private var panel: MaterialCardView? = null
+    private var panel: FrameLayout? = null
     private var originalText: TextView? = null
     private var translatedText: TextView? = null
     private var params: WindowManager.LayoutParams? = null
@@ -110,11 +110,24 @@ class OverlayService : Service() {
         }
         content.addView(originalText)
         content.addView(translatedText)
-        panel = MaterialCardView(this).apply {
-            radius = resources.getDimension(R.dimen.overlay_corner_radius)
-            cardElevation = resources.getDimension(R.dimen.overlay_elevation)
-            strokeWidth = resources.getDimensionPixelSize(R.dimen.overlay_stroke_width)
-            strokeColor = ContextCompat.getColor(this@OverlayService, R.color.outline)
+        panel = FrameLayout(this).apply {
+            val backgroundDrawable = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = resources.getDimension(R.dimen.overlay_corner_radius)
+                setColor(ContextCompat.getColor(this@OverlayService, R.color.surface))
+                setStroke(
+                    resources.getDimensionPixelSize(R.dimen.overlay_stroke_width),
+                    ContextCompat.getColor(this@OverlayService, R.color.outline)
+                )
+            }
+            background = backgroundDrawable
+            elevation = resources.getDimension(R.dimen.overlay_elevation)
+            setPadding(
+                resources.getDimensionPixelSize(R.dimen.overlay_text_spacing),
+                resources.getDimensionPixelSize(R.dimen.overlay_text_spacing),
+                resources.getDimensionPixelSize(R.dimen.overlay_text_spacing),
+                resources.getDimensionPixelSize(R.dimen.overlay_text_spacing)
+            )
             addView(content)
             setOnTouchListener(object : View.OnTouchListener {
                 var downX = 0f; var downY = 0f; var startX = 0; var startY = 0

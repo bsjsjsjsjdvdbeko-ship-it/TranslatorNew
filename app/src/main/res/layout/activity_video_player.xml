@@ -24,6 +24,16 @@
             android:layout_width="match_parent" android:layout_height="wrap_content" android:singleLine="true"
             android:inputType="textUri" android:hint="@string/player_subtitle_url"/>
     </com.google.android.material.textfield.TextInputLayout>
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginHorizontal="12dp" android:layout_marginTop="6dp"
+        app:boxBackgroundMode="outline">
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/drmLicenseUrlInput"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:singleLine="true" android:inputType="textUri"
+            android:hint="@string/player_drm_license_url" />
+    </com.google.android.material.textfield.TextInputLayout>
     <com.google.android.material.button.MaterialButton android:id="@+id/playUrlButton"
         android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginHorizontal="12dp"
         android:text="@string/player_play_url" app:icon="@drawable/ic_play" />

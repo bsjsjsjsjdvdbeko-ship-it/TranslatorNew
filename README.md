@@ -10,8 +10,9 @@ service, overlay service and settings architecture were preserved.
 - Secure WebView defaults: no file/content access, no mixed content, no JavaScript native bridge, and no automatic permission grants.
 - Platform URL resolver for YouTube, TikTok, Instagram/Reels, Facebook/Watch, X, Vimeo, Twitch and direct media URLs.
 - Android `ACTION_SEND` text/URL and `ACTION_VIEW` HTTP(S) link handling with `singleTop`/`onNewIntent` duplicate protection.
-- Direct-media playback through the existing Media3/ExoPlayer screen.
+- Direct-media playback through the existing Media3/ExoPlayer screen, including HLS/DASH modules.
 - Optional remote SRT/WebVTT subtitle track support for direct media URLs.
+- Official Widevine DRM playback configuration: the user may supply an HTTPS license URL from an authorized content provider; no DRM bypass, key extraction, or protected-media scraping is performed.
 - A live subtitle state bus connected to the existing capture/translation pipeline so translated results can appear inside the video player as well as the existing overlay.
 - MediaProjection stop callback and existing coroutine cancellation/resource cleanup retained.
 - SRT/WebVTT parsing utility with automated JVM tests.
@@ -19,7 +20,7 @@ service, overlay service and settings architecture were preserved.
 
 ## Platform policy / capability boundary
 
-A normal webpage URL is not treated as a direct media file. Known social/video platforms are opened in the internal browser rather than scraped for protected media. The application does not bypass login, DRM, geographic restrictions, signed URLs, anti-bot controls or platform access rules.
+A normal webpage URL is not treated as a direct media file. Known social/video platforms are opened in the internal browser rather than scraped for protected media. The application does not bypass login, DRM, geographic restrictions, signed URLs, anti-bot controls or platform access rules. DRM playback uses Media3's official Widevine path only when an authorized license endpoint is supplied.
 
 Playback capture remains subject to Android's `AudioPlaybackCapture` rules and the source application's capture policy. If the source does not permit capture, Sari Subtitle reports failure rather than attempting a bypass.
 
@@ -53,3 +54,7 @@ The source tree and XML were inspected after modification. Automated JVM tests w
 - Playback capture can return no audio when the source application disallows capture or uses protected playback.
 - The live transcription path does not invent frame-accurate timestamps. It uses arrival/capture timing for live display; exact synchronization is only guaranteed when a real subtitle track supplies timestamps.
 - Microphone fallback is not silently enabled; the current live path intentionally remains playback-capture based.
+
+## DRM الرسمي
+
+للمحتوى المحمي يمكن إدخال رابط ترخيص Widevine الرسمي عبر HTTPS في شاشة المشغل. التطبيق لا يستخرج مفاتيح DRM ولا يتجاوز الحماية. نجاح تشغيل DRM لا يعني أن `AudioPlaybackCapture` مسموح به؛ إذا منع المصدر التقاط الصوت، تبقى الترجمة الحية غير متاحة لهذا المصدر.

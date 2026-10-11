@@ -13,8 +13,8 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.media3.common.MediaItem
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -28,6 +28,7 @@ class VideoPlayerActivity : AppCompatActivity() {
     private var player: ExoPlayer? = null
     private lateinit var urlInput: EditText
     private lateinit var subtitleInput: EditText
+    private lateinit var drmLicenseInput: EditText
     private lateinit var status: TextView
     private lateinit var playerView: PlayerView
 
@@ -48,6 +49,7 @@ class VideoPlayerActivity : AppCompatActivity() {
         setContentView(R.layout.activity_video_player)
         urlInput = findViewById(R.id.videoUrlInput)
         subtitleInput = findViewById(R.id.subtitleUrlInput)
+        drmLicenseInput = findViewById(R.id.drmLicenseUrlInput)
         status = findViewById(R.id.videoPlayerStatus)
         playerView = findViewById(R.id.videoPlayerView)
         findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.playerBack)
@@ -74,7 +76,12 @@ class VideoPlayerActivity : AppCompatActivity() {
             playerView.player = exo
             exo.addListener(object : Player.Listener {
                 override fun onPlayerError(error: PlaybackException) {
-                    status.text = getString(R.string.player_error, error.errorCodeName)
+                    val drmConfigured = player?.currentMediaItem?.localConfiguration?.drmConfiguration != null
+                    status.text = if (drmConfigured) {
+                        getString(R.string.player_drm_error, error.errorCodeName)
+                    } else {
+                        getString(R.string.player_error, error.errorCodeName)
+                    }
                 }
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_READY) status.text = getString(R.string.player_ready)
@@ -97,14 +104,33 @@ class VideoPlayerActivity : AppCompatActivity() {
         }
         val mediaUri = resolved.uri
         val subtitle = subtitleConfiguration()
-        val mediaItem = MediaItem.Builder().setUri(mediaUri).apply {
-            if (subtitle != null) setSubtitleConfigurations(listOf(subtitle))
-        }.build()
+        val drmLicenseUri = drmLicenseUriOrNull()
+        val mediaItemBuilder = MediaItem.Builder()
+            .setUri(mediaUri)
+            .setMimeType(VideoPlatformResolver.mimeTypeFor(resolved))
+
+        if (subtitle != null) {
+            mediaItemBuilder.setSubtitleConfigurations(listOf(subtitle))
+        }
+
+        if (drmLicenseUri != null) {
+            mediaItemBuilder.setDrmConfiguration(
+                MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
+                    .setLicenseUri(drmLicenseUri)
+                    .setMultiSession(false)
+                    .build()
+            )
+            status.text = getString(R.string.player_drm_configured)
+        }
+
+        val mediaItem = mediaItemBuilder.build()
         try {
             player?.setMediaItem(mediaItem)
             player?.prepare()
             player?.playWhenReady = true
-            status.text = if (subtitle != null) getString(R.string.player_subtitle_loaded) else getString(R.string.player_loading)
+            if (drmLicenseUri == null) {
+                status.text = if (subtitle != null) getString(R.string.player_subtitle_loaded) else getString(R.string.player_loading)
+            }
         } catch (e: Exception) {
             status.text = getString(R.string.player_error, e.message ?: "unknown")
         }
@@ -123,8 +149,19 @@ class VideoPlayerActivity : AppCompatActivity() {
         return MediaItem.SubtitleConfiguration.Builder(uri)
             .setMimeType(mime)
             .setLanguage("ar")
-            .setSelectionFlags(androidx.media3.common.C.SELECTION_FLAG_DEFAULT)
+            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
             .build()
+    }
+
+    private fun drmLicenseUriOrNull(): Uri? {
+        val raw = drmLicenseInput.text.toString().trim()
+        if (raw.isBlank()) return null
+        val uri = runCatching { Uri.parse(raw) }.getOrNull()
+        if (uri?.scheme?.lowercase() != "https" || uri.host.isNullOrBlank()) {
+            drmLicenseInput.error = getString(R.string.player_drm_https_required)
+            return null
+        }
+        return uri
     }
 
     private fun requestTranslation() {

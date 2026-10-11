@@ -213,13 +213,6 @@ class AudioCaptureService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-
-    private inline fun <reified T : android.os.Parcelable> Intent.parcelableIntentExtra(key: String): T? {
-        return if (Build.VERSION.SDK_INT >= 33) getParcelableExtra(key, T::class.java) else {
-            @Suppress("DEPRECATION") (getParcelableExtra(key) as? T)
-        }
-    }
-
     companion object {
         private const val TAG = "SariAudioCapture"
         private const val NOTIFICATION_ID = 2

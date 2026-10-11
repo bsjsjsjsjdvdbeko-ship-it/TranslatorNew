@@ -37,6 +37,22 @@ object VideoPlatformResolver {
         return ResolvedVideoLink(uri, if (direct) VideoPlatform.DIRECT else platform, direct, host)
     }
 
+    fun mimeTypeFor(link: ResolvedVideoLink): String? {
+        val extension = link.uri.path.orEmpty().substringAfterLast('.', "").lowercase()
+        return when (extension) {
+            "mp4" -> "video/mp4"
+            "m4v" -> "video/x-m4v"
+            "webm" -> "video/webm"
+            "m3u8" -> "application/x-mpegURL"
+            "mpd" -> "application/dash+xml"
+            "mp3" -> "audio/mpeg"
+            "m4a" -> "audio/mp4"
+            "wav" -> "audio/wav"
+            "ogg" -> "audio/ogg"
+            else -> null
+        }
+    }
+
     fun isSupportedHost(link: ResolvedVideoLink): Boolean =
         link.platform != VideoPlatform.UNKNOWN || link.isDirectMedia
 
