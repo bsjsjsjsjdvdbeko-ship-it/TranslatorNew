@@ -1,34 +1,23 @@
-# Sari Subtitle — Stage 3
+# Sari Subtitle — Stage 4 (Groq + Google Translation / MyMemory)
 
-Android Kotlin starter implementation for speech transcription, translation-provider clients,
-secure settings, a floating overlay, and a Room translation history.
+This ZIP is a source-code update based on the supplied Stage 3 archive.
 
-## Build
-- Android Studio / GitHub Actions: JDK 17, Android SDK 35, Gradle 8.9, AGP 8.7.3.
-- GitHub Actions workflow runs `gradle assembleDebug`.
+## Stage 4 changes
+- Groq transcription endpoint `https://api.groq.com/openai/v1/audio/transcriptions`, model `whisper-large-v3-turbo`, JSON response and configurable speech language (default `ar`).
+- Google Cloud Translation v2 and MyMemory translation client, with configurable source/target languages and optional MyMemory email.
+- HTTP request retries up to three attempts and Arabic-facing error messages.
+- 3-second chunk timing with 500 ms overlap primitives and transcript deduplication (`AudioChunker.kt`).
+- Overlay can show original + translated text, is draggable, and hides its text after 3 seconds without an update.
+- Settings screen for Groq key, Google key, MyMemory email, languages, font size and opacity values; Groq key signup shortcut.
 
-## Important implementation status
-This stage includes working HTTP client methods for audio files and translation text, encrypted
-settings, history persistence, and an overlay shell. It is **not yet an end-to-end live captioning
-product**: AudioCaptureService deliberately does not yet implement the MediaProjection consent
-flow, playback-capture AudioRecord pipeline, speech-segment buffering, or automatically connect
-captured segments to TranslationRepository. The overlay is currently a panel and is not wired to
-live repository events. Android does not permit silent capture of arbitrary app audio; users must
-approve playback capture, and individual apps may disallow capture.
+## Important limitation — not yet a complete live-captions APK
+Stage 3's `AudioCaptureService` is still a permission-gated scaffold. It does **not** yet capture another app's playback through a complete MediaProjection/AudioPlaybackCapture pipeline, create actual audio chunk files, or continuously feed those chunks into `TranslationRepository`. Consequently, this archive is a Stage 4 source update, not a verified ready-to-install real-time captioning app. `AudioChunker` currently provides chunk timing and transcript deduplication primitives; a device-side playback-capture pipeline must call them and write audio chunks. Android requires user consent for playback capture and some apps prohibit it.
 
-## Configure
-1. Install the app and grant “Display over other apps” permission.
-2. Open Settings and add an OpenAI key for Whisper transcription.
-3. Select a translation provider and add its API key. Google Cloud Translation and DeepL require
-   enabled/billable provider accounts; OpenAI usage is also billed according to current pricing.
-4. Keep API keys private. Do not commit them to GitHub.
+## Setup
+1. Open `SariSubtitle` in Android Studio with JDK 17 and Android SDK 35.
+2. Add a Groq key in Settings; get one at https://console.groq.com/keys.
+3. Select Google and add a Google Cloud Translation API key, or choose MyMemory without a key.
+4. Grant overlay permission. API usage limits and provider policies apply; MyMemory is not an unlimited service.
+5. Keep API keys private and do not commit them to a public repository.
 
-Source language uses ISO language codes (e.g. `en`); `auto` is supported where provider APIs allow.
-Target defaults to `ar`.
-
-## Notes
-- Network traffic uses HTTPS only.
-- API calls retry up to three attempts.
-- VAD currently provides an RMS energy detector helper, not a complete adaptive streaming VAD.
-- EncryptedSharedPreferences is from AndroidX Security Crypto and may be deprecated in future
-  library versions; it is retained here to match the requested API.
+Build status: source files were packaged; no successful Android build or on-device end-to-end test is claimed here.
