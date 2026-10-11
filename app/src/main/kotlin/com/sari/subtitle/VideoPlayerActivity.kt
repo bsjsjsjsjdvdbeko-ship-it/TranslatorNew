@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.C
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -122,7 +123,7 @@ class VideoPlayerActivity : AppCompatActivity() {
         return MediaItem.SubtitleConfiguration.Builder(uri)
             .setMimeType(mime)
             .setLanguage("ar")
-            .setSelectionFlags(MediaItem.SubtitleConfiguration.SELECTION_FLAG_DEFAULT)
+            .setSelectionFlags(androidx.media3.common.C.SELECTION_FLAG_DEFAULT)
             .build()
     }
 
