@@ -134,6 +134,17 @@ class AudioCaptureService : Service() {
                 }
                 ACTION_START -> {
                     Log.d(TAG, "Start action received")
+
+                    // Must call startForeground within 5 seconds on Android 14+
+                    try {
+                        startCaptureForeground()
+                        Log.d(TAG, "Foreground started early")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Early foreground failed", e)
+                        stopSelfResult(startId)
+                        return START_NOT_STICKY
+                    }
+
                     val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
                     val resultData: Intent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
@@ -201,7 +212,6 @@ class AudioCaptureService : Service() {
                 }
             }
             projection.registerCallback(projectionCallback!!, handler)
-            startCaptureForeground()
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                 Log.e(TAG, "Playback capture requires Android 10+")
                 stopCapture()
