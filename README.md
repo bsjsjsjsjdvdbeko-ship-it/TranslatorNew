@@ -21,3 +21,13 @@ Stage 3's `AudioCaptureService` is still a permission-gated scaffold. It does **
 5. Keep API keys private and do not commit them to a public repository.
 
 Build status: source files were packaged; no successful Android build or on-device end-to-end test is claimed here.
+
+## Stage 7: direct-stream player (experimental)
+
+Stage 7 adds an in-app Media3/ExoPlayer screen for compatible direct HTTP(S) media URLs. The player requests the media stream once and does not download a complete local copy. The user can explicitly grant Android MediaProjection consent and start the existing eligible-playback-audio transcription flow while the video plays.
+
+Limitations to know:
+- A direct media URL (for example, a compatible MP4/HLS/DASH URL) is required. A webpage URL such as a YouTube watch page is not itself a media stream and is not supported by this screen.
+- Playback capture is subject to Android's audio-capture policy and the source app/stream's restrictions, including DRM.
+- The current transcription pipeline translates short audio chunks after recognition. It does not yet produce word-level or sentence-level media timestamps, so subtitle timing is near-real-time rather than frame-accurate. Exact synchronization requires carrying media playback timestamps through transcription and aligning translated segments to the player's current position.
+- Build validation in the development environment was limited to XML parsing and source/archive checks; run `gradle assembleDebug` in Android Studio or CI to validate compilation against the Android SDK.

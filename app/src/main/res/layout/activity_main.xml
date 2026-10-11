@@ -33,6 +33,7 @@
      <Space android:layout_width="12dp" android:layout_height="1dp"/>
      <com.google.android.material.button.MaterialButton android:id="@+id/settingsShortcut" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="0dp" android:layout_height="54dp" android:layout_weight="1" android:text="@string/settings" app:icon="@drawable/ic_settings" app:iconGravity="textStart"/>
     </LinearLayout>
+    <com.google.android.material.button.MaterialButton android:id="@+id/openVideoPlayerButton" style="@style/Widget.Material3.Button" android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="14dp" android:text="@string/open_video_player" app:icon="@drawable/ic_play" app:iconGravity="textStart"/>
    </LinearLayout>
   </ScrollView>
   <com.google.android.material.bottomnavigation.BottomNavigationView android:id="@+id/bottomNavigation" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/surface" app:itemIconTint="@color/primary" app:itemTextColor="@color/text_secondary" app:labelVisibilityMode="labeled" app:menu="@menu/bottom_nav_menu"/>

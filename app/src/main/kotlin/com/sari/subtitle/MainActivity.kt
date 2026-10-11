@@ -58,6 +58,7 @@ class MainActivity : AppCompatActivity() {
         overlaySwitch = findViewById(R.id.overlaySwitch)
         statusDot = findViewById(R.id.statusDot)
         findViewById<View>(R.id.settingsShortcut).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
+        findViewById<View>(R.id.openVideoPlayerButton).setOnClickListener { startActivity(Intent(this, VideoPlayerActivity::class.java)) }
         findViewById<View>(R.id.historyShortcut).setOnClickListener { startActivity(Intent(this, HistoryActivity::class.java)) }
         captureFab.setOnClickListener {
             it.animate().scaleX(0.92f).scaleY(0.92f).setDuration(80).withEndAction { it.animate().scaleX(1f).scaleY(1f).setDuration(110).start() }.start()
