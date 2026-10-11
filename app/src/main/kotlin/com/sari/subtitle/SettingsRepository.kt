@@ -6,9 +6,78 @@ import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-data class AppSettings(val provider:Int=1, val speechKey:String="", val translationKey:String="", val sourceLanguage:String="auto", val targetLanguage:String="ar", val fontSize:Int=30, val opacity:Int=82, val myMemoryEmail:String="", val speechLanguage:String="ar")
-class SettingsRepository(context:Context) {
- private val prefs=try { val master=MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(); EncryptedSharedPreferences.create(context,"sari_secure_settings",master,EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM) } catch(_:Exception){null}
- suspend fun save(provider:Int,speechKey:String,translationKey:String,source:String,target:String,font:Int,opacity:Int,email:String,speechLanguage:String)=withContext(Dispatchers.IO){ val p=prefs?:throw IllegalStateException("تعذر تفعيل التخزين المشفر على هذا الجهاز."); p.edit().putInt("provider",provider).putString("speechKey",speechKey).putString("translationKey",translationKey).putString("source",source).putString("target",target).putInt("font",font).putInt("opacity",opacity).putString("email",email).putString("speechLanguage",speechLanguage).apply() }
- suspend fun load():AppSettings=withContext(Dispatchers.IO){ val p=prefs?:return@withContext AppSettings(); AppSettings(p.getInt("provider",1),p.getString("speechKey","").orEmpty(),p.getString("translationKey","").orEmpty(),p.getString("source","auto").orEmpty(),p.getString("target","ar").orEmpty(),p.getInt("font",30),p.getInt("opacity",82),p.getString("email","").orEmpty(),p.getString("speechLanguage","ar").orEmpty()) }
+data class AppSettings(
+    val provider: Int = SettingsRepository.PROVIDER_MYMEMORY,
+    val speechKey: String = "",
+    val translationKey: String = "",
+    val sourceLanguage: String = "auto",
+    val targetLanguage: String = "ar",
+    val fontSize: Int = 30,
+    val opacity: Int = 82,
+    val myMemoryEmail: String = "",
+    val speechLanguage: String = "ar"
+)
+
+class SettingsRepository(context: Context) {
+    private val prefs = try {
+        val master = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
+        EncryptedSharedPreferences.create(
+            context, "sari_secure_settings", master,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    } catch (_: Exception) { null }
+
+    suspend fun save(
+        provider: Int,
+        speechKey: String,
+        translationKey: String,
+        source: String,
+        target: String,
+        font: Int,
+        opacity: Int,
+        email: String,
+        speechLanguage: String
+    ) = withContext(Dispatchers.IO) {
+        val p = prefs ?: throw IllegalStateException("تعذر تفعيل التخزين المشفر على هذا الجهاز.")
+        p.edit()
+            .putInt("provider", provider.coerceIn(PROVIDER_GROQ, PROVIDER_MYMEMORY))
+            .putBoolean("providerSchemaV2", true)
+            .putString("speechKey", speechKey)
+            .putString("translationKey", translationKey)
+            .putString("source", source)
+            .putString("target", target)
+            .putInt("font", font.coerceIn(12, 48))
+            .putInt("opacity", opacity.coerceIn(0, 100))
+            .putString("email", email)
+            .putString("speechLanguage", speechLanguage)
+            .apply()
+    }
+
+    suspend fun load(): AppSettings = withContext(Dispatchers.IO) {
+        val p = prefs ?: return@withContext AppSettings()
+        val storedProvider = p.getInt("provider", PROVIDER_MYMEMORY)
+        // Stage 4 stored 0=Google and 1=MyMemory. Migrate once to Stage 5's 0=Groq, 1=Google, 2=MyMemory.
+        val provider = if (p.getBoolean("providerSchemaV2", false)) storedProvider.coerceIn(0, 2) else when (storedProvider) {
+            0 -> PROVIDER_GOOGLE
+            else -> PROVIDER_MYMEMORY
+        }
+        AppSettings(
+            provider = provider,
+            speechKey = p.getString("speechKey", "").orEmpty(),
+            translationKey = p.getString("translationKey", "").orEmpty(),
+            sourceLanguage = p.getString("source", "auto").orEmpty(),
+            targetLanguage = p.getString("target", "ar").orEmpty(),
+            fontSize = p.getInt("font", 30),
+            opacity = p.getInt("opacity", 82),
+            myMemoryEmail = p.getString("email", "").orEmpty(),
+            speechLanguage = p.getString("speechLanguage", "ar").orEmpty()
+        )
+    }
+
+    companion object {
+        const val PROVIDER_GROQ = 0
+        const val PROVIDER_GOOGLE = 1
+        const val PROVIDER_MYMEMORY = 2
+    }
 }
