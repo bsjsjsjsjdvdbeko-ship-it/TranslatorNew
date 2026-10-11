@@ -3,117 +3,86 @@ package com.sari.subtitle
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.text.InputType
-import android.view.ViewGroup
-import android.widget.*
+import android.widget.ArrayAdapter
+import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.textfield.MaterialAutoCompleteTextView
+import com.google.android.material.slider.Slider
+import com.google.android.material.textfield.TextInputEditText
 import kotlinx.coroutines.launch
 
 class SettingsActivity : AppCompatActivity() {
-    private lateinit var provider: Spinner
-    private lateinit var speechKey: EditText
-    private lateinit var translationKey: EditText
-    private lateinit var sourceLang: EditText
-    private lateinit var targetLang: EditText
-    private lateinit var speechLang: EditText
-    private lateinit var email: EditText
-    private lateinit var fontSize: SeekBar
-    private lateinit var opacity: SeekBar
+    private lateinit var provider: MaterialAutoCompleteTextView
+    private lateinit var speechKey: TextInputEditText
+    private lateinit var translationKey: TextInputEditText
+    private lateinit var sourceLang: TextInputEditText
+    private lateinit var targetLang: TextInputEditText
+    private lateinit var speechLang: TextInputEditText
+    private lateinit var email: TextInputEditText
+    private lateinit var fontSize: Slider
+    private lateinit var opacity: Slider
+    private lateinit var fontValue: TextView
+    private lateinit var opacityValue: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(24, 24, 24, 24)
+        setContentView(R.layout.activity_settings)
+        findViewById<MaterialToolbar>(R.id.settingsToolbar).apply {
+            setNavigationOnClickListener { finish() }
+            setOnMenuItemClickListener { if (it.itemId == R.id.action_save) { saveSettings(); true } else false }
         }
-        fun label(value: String) {
-            root.addView(TextView(this).apply { text = value; textSize = 14f; setPadding(0, 12, 0, 4) })
-        }
-        fun field(hintText: String, secret: Boolean = false): EditText = EditText(this).apply {
-            hint = hintText
-            if (secret) inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-
-        label("Provider — مزوّد الترجمة")
-        provider = Spinner(this).apply {
-            adapter = ArrayAdapter(
-                this@SettingsActivity, android.R.layout.simple_spinner_dropdown_item,
-                listOf("Groq", "Google Cloud Translation", "MyMemory")
-            )
-        }
-        root.addView(provider)
-
-        label("Groq API Key — مفتاح الصوت")
-        speechKey = field("Groq API Key", true)
-        root.addView(speechKey)
-        root.addView(Button(this).apply {
-            text = "Get Groq API Key"
-            setOnClickListener { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://console.groq.com/keys"))) }
-        })
-
-        label("Translation API Key (optional)")
-        translationKey = field("Translation API Key (اختياري)", true)
-        root.addView(translationKey)
-        label("MyMemory Email (optional)")
-        email = field("MyMemory Email (اختياري)")
-        root.addView(email)
-
-        label("Speech language")
-        speechLang = field("ar أو en أو auto")
-        root.addView(speechLang)
-        label("Source language")
-        sourceLang = field("auto أو en أو ar")
-        root.addView(sourceLang)
-        label("Target language")
-        targetLang = field("ar أو en")
-        root.addView(targetLang)
-
-        label("Font size")
-        fontSize = SeekBar(this).apply { max = 36; progress = 18 }
-        root.addView(fontSize)
-        label("Overlay opacity")
-        opacity = SeekBar(this).apply { max = 100; progress = 82 }
-        root.addView(opacity)
-
-        root.addView(Button(this).apply {
-            text = "SAVE SETTINGS"
-            setOnClickListener {
-                lifecycleScope.launch {
-                    try {
-                        SettingsRepository(this@SettingsActivity).save(
-                            provider = provider.selectedItemPosition,
-                            speechKey = speechKey.text.toString().trim(),
-                            translationKey = translationKey.text.toString().trim(),
-                            source = sourceLang.text.toString().trim().ifBlank { "auto" },
-                            target = targetLang.text.toString().trim().ifBlank { "ar" },
-                            font = fontSize.progress + 12,
-                            opacity = opacity.progress,
-                            email = email.text.toString().trim(),
-                            speechLanguage = speechLang.text.toString().trim().ifBlank { "ar" }
-                        )
-                        Toast.makeText(this@SettingsActivity, "تم حفظ الإعدادات", Toast.LENGTH_SHORT).show()
-                        finish()
-                    } catch (e: Exception) {
-                        Toast.makeText(this@SettingsActivity, e.message ?: "تعذر الحفظ", Toast.LENGTH_LONG).show()
-                    }
-                }
-            }
-        })
-
-        setContentView(ScrollView(this).apply { addView(root) })
+        provider = findViewById(R.id.providerSpinner)
+        provider.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, listOf("Groq", "Google Cloud Translation", "MyMemory")))
+        provider.setOnClickListener { provider.showDropDown() }
+        speechKey = findViewById(R.id.speechKeyInput)
+        translationKey = findViewById(R.id.translationKeyInput)
+        sourceLang = findViewById(R.id.sourceLanguageInput)
+        targetLang = findViewById(R.id.targetLanguageInput)
+        speechLang = findViewById(R.id.speechLanguageInput)
+        email = findViewById(R.id.emailInput)
+        fontSize = findViewById(R.id.fontSizeSeek)
+        opacity = findViewById(R.id.opacitySeek)
+        fontValue = findViewById(R.id.fontSizeValue)
+        opacityValue = findViewById(R.id.opacityValue)
+        fontSize.valueFrom = 12f; fontSize.valueTo = 48f; fontSize.stepSize = 1f
+        opacity.valueFrom = 0f; opacity.valueTo = 100f; opacity.stepSize = 1f
+        fontSize.addOnChangeListener { _, value, _ -> fontValue.text = "${value.toInt()} sp" }
+        opacity.addOnChangeListener { _, value, _ -> opacityValue.text = "${value.toInt()}%" }
+        findViewById<MaterialButton>(R.id.getGroqKeyButton).setOnClickListener { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://console.groq.com/keys"))) }
+        findViewById<MaterialButton>(R.id.saveSettingsButton).setOnClickListener { saveSettings() }
         lifecycleScope.launch {
             val s = SettingsRepository(this@SettingsActivity).load()
-            provider.setSelection(s.provider.coerceIn(0, 2))
-            speechKey.setText(s.speechKey)
-            translationKey.setText(s.translationKey)
-            sourceLang.setText(s.sourceLanguage)
-            targetLang.setText(s.targetLanguage)
-            speechLang.setText(s.speechLanguage)
-            email.setText(s.myMemoryEmail)
-            fontSize.progress = (s.fontSize - 12).coerceIn(0, 36)
-            opacity.progress = s.opacity.coerceIn(0, 100)
+            provider.setText(listOf("Groq", "Google Cloud Translation", "MyMemory")[s.provider.coerceIn(0, 2)], false)
+            speechKey.setText(s.speechKey); translationKey.setText(s.translationKey)
+            sourceLang.setText(s.sourceLanguage); targetLang.setText(s.targetLanguage)
+            speechLang.setText(s.speechLanguage); email.setText(s.myMemoryEmail)
+            fontSize.value = s.fontSize.coerceIn(12, 48).toFloat(); opacity.value = s.opacity.coerceIn(0, 100).toFloat()
+            fontValue.text = "${s.fontSize} sp"; opacityValue.text = "${s.opacity}%"
+        }
+    }
+
+    private fun saveSettings() {
+        lifecycleScope.launch {
+            try {
+                SettingsRepository(this@SettingsActivity).save(
+                    provider = listOf("Groq", "Google Cloud Translation", "MyMemory").indexOf(provider.text.toString()).coerceAtLeast(0),
+                    speechKey = speechKey.text?.toString()?.trim().orEmpty(),
+                    translationKey = translationKey.text?.toString()?.trim().orEmpty(),
+                    source = sourceLang.text?.toString()?.trim().orEmpty().ifBlank { "auto" },
+                    target = targetLang.text?.toString()?.trim().orEmpty().ifBlank { "ar" },
+                    font = fontSize.value.toInt(), opacity = opacity.value.toInt(),
+                    email = email.text?.toString()?.trim().orEmpty(),
+                    speechLanguage = speechLang.text?.toString()?.trim().orEmpty().ifBlank { "ar" }
+                )
+                Toast.makeText(this@SettingsActivity, R.string.settings_saved, Toast.LENGTH_SHORT).show()
+                finish()
+            } catch (e: Exception) {
+                Toast.makeText(this@SettingsActivity, e.message ?: getString(R.string.settings_save_failed), Toast.LENGTH_LONG).show()
+            }
         }
     }
 }

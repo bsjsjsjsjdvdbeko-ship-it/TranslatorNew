@@ -50,12 +50,7 @@ class AudioCaptureService : Service() {
             ACTION_STOP -> stopCapture()
             ACTION_START -> {
                 val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
-                @Suppress("DEPRECATION")
-                val resultData: Intent? = if (Build.VERSION.SDK_INT >= 33) {
-                    intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
-                } else {
-                    intent.getParcelableExtra(EXTRA_RESULT_DATA)
-                }
+                val resultData = intent.parcelableIntentExtra(EXTRA_RESULT_DATA)
                 if (resultData == null || resultCode == 0) {
                     Log.e(TAG, "Missing MediaProjection consent result.")
                     stopSelf(startId)

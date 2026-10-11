@@ -9,18 +9,26 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.widget.Button
-import android.widget.LinearLayout
+import android.view.View
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.android.material.materialswitch.MaterialSwitch
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
     private lateinit var status: TextView
+    private lateinit var latest: TextView
+    private lateinit var captureFab: FloatingActionButton
+    private lateinit var overlaySwitch: MaterialSwitch
+    private lateinit var statusDot: View
+    private var capturing = false
+
     private val projectionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             val serviceIntent = Intent(this, AudioCaptureService::class.java)
@@ -28,88 +36,72 @@ class MainActivity : AppCompatActivity() {
                 .putExtra(AudioCaptureService.EXTRA_RESULT_CODE, result.resultCode)
                 .putExtra(AudioCaptureService.EXTRA_RESULT_DATA, result.data)
             ContextCompat.startForegroundService(this, serviceIntent)
-            status.text = "Audio capture started."
+            setCaptureUi(true)
         } else {
-            status.text = "Audio capture permission was not granted."
-            Toast.makeText(this, "يلزم السماح بالتقاط صوت الجهاز.", Toast.LENGTH_LONG).show()
+            status.text = getString(R.string.capture_permission_denied)
+            Toast.makeText(this, R.string.capture_permission_denied, Toast.LENGTH_LONG).show()
         }
     }
     private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         if (requiredPermissionsGranted()) continueStartCapture() else {
-            status.text = "Microphone/audio and notification permissions are required."
-            Toast.makeText(this, "امنح أذونات الصوت والإشعارات أولاً.", Toast.LENGTH_LONG).show()
+            status.text = getString(R.string.permissions_required)
+            Toast.makeText(this, R.string.permissions_required, Toast.LENGTH_LONG).show()
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(32, 40, 32, 24) }
-        layout.addView(TextView(this).apply { text = "Sari Subtitle"; textSize = 28f })
-        status = TextView(this).apply {
-            text = "Configure Groq and a translation provider in Settings."
-            textSize = 15f
-            setPadding(0, 16, 0, 24)
+        setContentView(R.layout.activity_main)
+        status = findViewById(R.id.captureStatus)
+        latest = findViewById(R.id.latestTranslation)
+        captureFab = findViewById(R.id.captureFab)
+        overlaySwitch = findViewById(R.id.overlaySwitch)
+        statusDot = findViewById(R.id.statusDot)
+        findViewById<View>(R.id.settingsShortcut).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
+        findViewById<View>(R.id.historyShortcut).setOnClickListener { startActivity(Intent(this, HistoryActivity::class.java)) }
+        captureFab.setOnClickListener {
+            it.animate().scaleX(0.92f).scaleY(0.92f).setDuration(80).withEndAction { it.animate().scaleX(1f).scaleY(1f).setDuration(110).start() }.start()
+            if (capturing) stopCapture() else requestCaptureStart()
         }
-        layout.addView(status)
-        layout.addView(Button(this).apply {
-            text = getString(R.string.start_overlay)
-            setOnClickListener {
-                if (!Settings.canDrawOverlays(this@MainActivity)) {
-                    startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-                } else {
-                    startService(Intent(this@MainActivity, OverlayService::class.java).setAction(OverlayService.ACTION_SHOW))
-                    status.text = "Floating subtitle panel is visible."
-                }
+        overlaySwitch.setOnCheckedChangeListener { _, checked ->
+            if (checked && !Settings.canDrawOverlays(this)) {
+                overlaySwitch.isChecked = false
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                return@setOnCheckedChangeListener
             }
-        })
-        layout.addView(Button(this).apply {
-            text = getString(R.string.stop_overlay)
-            setOnClickListener {
-                startService(Intent(this@MainActivity, OverlayService::class.java).setAction(OverlayService.ACTION_HIDE))
-                status.text = "Floating panel hidden."
+            startService(Intent(this, OverlayService::class.java).setAction(if (checked) OverlayService.ACTION_SHOW else OverlayService.ACTION_HIDE))
+        }
+        findViewById<BottomNavigationView>(R.id.bottomNavigation).setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_home -> true
+                R.id.nav_history -> { startActivity(Intent(this, HistoryActivity::class.java)); true }
+                R.id.nav_settings -> { startActivity(Intent(this, SettingsActivity::class.java)); true }
+                else -> false
             }
-        })
-        layout.addView(Button(this).apply {
-            text = getString(R.string.settings)
-            setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
-        })
-        layout.addView(Button(this).apply {
-            text = "Translation history"
-            setOnClickListener {
-                lifecycleScope.launch {
-                    val lines = AppDatabase.get(this@MainActivity).translationDao().latest(50)
-                    val historyText = lines.joinToString("\n\n") { "${it.sourceText}\n→ ${it.translatedText}" }
-                    android.app.AlertDialog.Builder(this@MainActivity)
-                        .setTitle("Recent translations")
-                        .setMessage(historyText.ifBlank { "No translations saved yet." })
-                        .setPositiveButton("Export TXT") { _, _ -> exportHistory(historyText) }
-                        .setNegativeButton("Close", null).show()
-                }
+        }
+        setCaptureUi(false)
+        lifecycleScope.launch {
+            AppDatabase.get(this@MainActivity).translationDao().observeLatest().collect { items ->
+                latest.text = items.firstOrNull()?.translatedText?.takeIf { it.isNotBlank() } ?: getString(R.string.no_translation_yet)
             }
-        })
-        layout.addView(Button(this).apply {
-            text = "START CAPTURE"
-            setOnClickListener { requestCaptureStart() }
-        })
-        layout.addView(Button(this).apply {
-            text = "STOP CAPTURE"
-            setOnClickListener {
-                startService(Intent(this@MainActivity, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
-                status.text = "Stopping audio capture…"
-            }
-        })
-        setContentView(layout)
+        }
+    }
+
+    private fun setCaptureUi(active: Boolean) {
+        capturing = active
+        status.text = getString(if (active) R.string.capture_active else R.string.capture_stopped)
+        captureFab.setImageResource(if (active) R.drawable.ic_stop else R.drawable.ic_play)
+        captureFab.contentDescription = getString(if (active) R.string.stop_capture else R.string.start_capture)
+        captureFab.backgroundTintList = ContextCompat.getColorStateList(this, if (active) R.color.error else R.color.accent)
+        statusDot.backgroundTintList = ContextCompat.getColorStateList(this, if (active) R.color.accent else R.color.text_secondary)
     }
 
     private fun requestCaptureStart() {
         val missing = buildList {
-            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
-                add(Manifest.permission.RECORD_AUDIO)
-            if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
-                add(Manifest.permission.POST_NOTIFICATIONS)
+            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) add(Manifest.permission.RECORD_AUDIO)
+            if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) add(Manifest.permission.POST_NOTIFICATIONS)
         }
-        if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
-        else continueStartCapture()
+        if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray()) else continueStartCapture()
     }
 
     private fun requiredPermissionsGranted(): Boolean =
@@ -118,7 +110,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun continueStartCapture() {
         if (!Settings.canDrawOverlays(this)) {
-            status.text = "Grant overlay permission, then press START CAPTURE again."
+            Toast.makeText(this, R.string.overlay_permission_required, Toast.LENGTH_LONG).show()
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             return
         }
@@ -126,22 +118,13 @@ class MainActivity : AppCompatActivity() {
         projectionLauncher.launch(manager.createScreenCaptureIntent())
     }
 
-    private fun exportHistory(content: String) {
-        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE); type = "text/plain"; putExtra(Intent.EXTRA_TITLE, "sari-translations.txt")
-        }
-        exportContent = content
-        @Suppress("DEPRECATION")
-        startActivityForResult(intent, 41)
+    private fun stopCapture() {
+        startService(Intent(this, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
+        setCaptureUi(false)
     }
 
-    @Deprecated("Uses document picker for broad Android compatibility")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 41 && resultCode == RESULT_OK) data?.data?.let { uri ->
-            contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(exportContent) }
-        }
+    override fun onResume() {
+        super.onResume()
+        // Overlay visibility is user-controlled; subtitle updates can auto-hide after silence.
     }
-
-    companion object { private var exportContent: String = "" }
 }
