@@ -5,24 +5,28 @@ import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Bundle
-import android.view.View
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.google.android.material.button.MaterialButton
 
-/** Plays a compatible direct media URL once; subtitle processing captures eligible playback audio. */
+@OptIn(UnstableApi::class)
 class VideoPlayerActivity : AppCompatActivity() {
     private var player: ExoPlayer? = null
     private lateinit var urlInput: EditText
+    private lateinit var subtitleInput: EditText
     private lateinit var status: TextView
     private lateinit var playerView: PlayerView
 
@@ -33,25 +37,35 @@ class VideoPlayerActivity : AppCompatActivity() {
                 .putExtra(AudioCaptureService.EXTRA_RESULT_CODE, result.resultCode)
                 .putExtra(AudioCaptureService.EXTRA_RESULT_DATA, result.data)
             ContextCompat.startForegroundService(this, intent)
-            startService(Intent(this, OverlayService::class.java).setAction(OverlayService.ACTION_SHOW))
+            ContextCompat.startForegroundService(this, Intent(this, OverlayService::class.java).setAction(OverlayService.ACTION_SHOW))
             status.text = getString(R.string.player_translation_running)
-        } else {
-            status.text = getString(R.string.capture_permission_denied)
-        }
+        } else status.text = getString(R.string.capture_permission_denied)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_video_player)
         urlInput = findViewById(R.id.videoUrlInput)
+        subtitleInput = findViewById(R.id.subtitleUrlInput)
         status = findViewById(R.id.videoPlayerStatus)
         playerView = findViewById(R.id.videoPlayerView)
-        findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.playerBack).setNavigationOnClickListener { finish() }
-        findViewById<MaterialButton>(R.id.playUrlButton).setOnClickListener { playUrl() }
+        findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.playerBack)
+            .setNavigationOnClickListener { finish() }
+        findViewById<MaterialButton>(R.id.playUrlButton).setOnClickListener { playOrRouteUrl() }
+        findViewById<MaterialButton>(R.id.loadSubtitleButton).setOnClickListener { playOrRouteUrl() }
         findViewById<MaterialButton>(R.id.startPlayerTranslationButton).setOnClickListener { requestTranslation() }
+        findViewById<MaterialButton>(R.id.openSourceButton).setOnClickListener { openSource() }
         urlInput.setText(intent.getStringExtra(EXTRA_URL).orEmpty())
         createPlayer()
-        if (urlInput.text.isNotBlank()) playUrl()
+        lifecycleScope.launch {
+            LiveSubtitleBus.current.collect { item ->
+                findViewById<TextView>(R.id.liveSubtitleText).apply {
+                    text = item?.translated.orEmpty()
+                    visibility = if (item?.translated.isNullOrBlank()) android.view.View.GONE else android.view.View.VISIBLE
+                }
+            }
+        }
+        if (urlInput.text.isNotBlank()) playOrRouteUrl()
     }
 
     private fun createPlayer() {
@@ -68,21 +82,48 @@ class VideoPlayerActivity : AppCompatActivity() {
         }
     }
 
-    private fun playUrl() {
+    private fun playOrRouteUrl() {
         val raw = urlInput.text.toString().trim()
-        val uri = runCatching { Uri.parse(raw) }.getOrNull()
-        if (uri == null || uri.scheme !in listOf("http", "https") || uri.host.isNullOrBlank()) {
+        val resolved = VideoPlatformResolver.resolve(raw)
+        if (resolved == null) {
             urlInput.error = getString(R.string.player_invalid_url)
             return
         }
+        if (!resolved.isDirectMedia) {
+            status.text = getString(R.string.player_platform_page, VideoPlatformResolver.displayName(resolved.platform))
+            startActivity(Intent(this, BrowserActivity::class.java).putExtra(BrowserActivity.EXTRA_URL, resolved.uri.toString()))
+            return
+        }
+        val mediaUri = resolved.uri
+        val subtitle = subtitleConfiguration()
+        val mediaItem = MediaItem.Builder().setUri(mediaUri).apply {
+            if (subtitle != null) setSubtitleConfigurations(listOf(subtitle))
+        }.build()
         try {
-            player?.setMediaItem(MediaItem.fromUri(uri))
+            player?.setMediaItem(mediaItem)
             player?.prepare()
             player?.playWhenReady = true
-            status.text = getString(R.string.player_loading)
+            status.text = if (subtitle != null) getString(R.string.player_subtitle_loaded) else getString(R.string.player_loading)
         } catch (e: Exception) {
             status.text = getString(R.string.player_error, e.message ?: "unknown")
         }
+    }
+
+    private fun subtitleConfiguration(): MediaItem.SubtitleConfiguration? {
+        val raw = subtitleInput.text.toString().trim()
+        if (raw.isBlank()) return null
+        val uri = VideoPlatformResolver.resolve(raw)?.uri ?: return null
+        val ext = uri.path.orEmpty().substringAfterLast('.', "").lowercase()
+        val mime = when (ext) {
+            "vtt" -> MimeTypes.TEXT_VTT
+            "srt" -> MimeTypes.APPLICATION_SUBRIP
+            else -> return null
+        }
+        return MediaItem.SubtitleConfiguration.Builder(uri)
+            .setMimeType(mime)
+            .setLanguage("ar")
+            .setSelectionFlags(MediaItem.SubtitleConfiguration.SELECTION_FLAG_DEFAULT)
+            .build()
     }
 
     private fun requestTranslation() {
@@ -92,6 +133,12 @@ class VideoPlayerActivity : AppCompatActivity() {
         }
         val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         projectionLauncher.launch(manager.createScreenCaptureIntent())
+    }
+
+    private fun openSource() {
+        val raw = urlInput.text.toString().trim()
+        if (VideoPlatformResolver.resolve(raw) != null)
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(raw)))
     }
 
     override fun onDestroy() {

@@ -92,6 +92,14 @@ class AudioCaptureService : Service() {
             val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             projection = manager.getMediaProjection(resultCode, resultData)
             val mediaProjection = projection ?: error("MediaProjection could not be created.")
+            if (Build.VERSION.SDK_INT >= 29) {
+                mediaProjection.registerCallback(object : MediaProjection.Callback() {
+                    override fun onStop() {
+                        Log.w(TAG, "MediaProjection was revoked or stopped.")
+                        stopCapture()
+                    }
+                }, android.os.Handler(mainLooper))
+            }
             val config = AudioPlaybackCaptureConfiguration.Builder(mediaProjection)
                 .addMatchingUsage(android.media.AudioAttributes.USAGE_MEDIA)
                 .addMatchingUsage(android.media.AudioAttributes.USAGE_GAME)

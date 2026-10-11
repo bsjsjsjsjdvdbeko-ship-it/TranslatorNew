@@ -30,6 +30,7 @@ class TranslationRepository(private val context: Context) {
             sourceText = speech, translatedText = translated, sourceLanguage = settings.sourceLanguage,
             targetLanguage = settings.targetLanguage, createdAt = System.currentTimeMillis()
         )
+        LiveSubtitleBus.publish(speech, translated)
         AppDatabase.get(context).translationDao().insert(entity)
         context.startService(Intent(context, OverlayService::class.java)
             .setAction(OverlayService.ACTION_UPDATE)

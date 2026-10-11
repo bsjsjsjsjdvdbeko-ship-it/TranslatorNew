@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.view.View
 import android.widget.TextView
+import com.google.android.material.textfield.TextInputEditText
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -28,6 +29,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var overlaySwitch: MaterialSwitch
     private lateinit var statusDot: View
     private var capturing = false
+    private var handledIntentSignature: String? = null
 
     private val projectionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
@@ -58,7 +60,20 @@ class MainActivity : AppCompatActivity() {
         overlaySwitch = findViewById(R.id.overlaySwitch)
         statusDot = findViewById(R.id.statusDot)
         findViewById<View>(R.id.settingsShortcut).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
-        findViewById<View>(R.id.openVideoPlayerButton).setOnClickListener { startActivity(Intent(this, VideoPlayerActivity::class.java)) }
+        findViewById<View>(R.id.openVideoPlayerButton).setOnClickListener {
+            val url = findViewById<TextInputEditText>(R.id.homeUrlInput).text?.toString()?.trim().orEmpty()
+            if (url.isBlank()) startActivity(Intent(this, BrowserActivity::class.java))
+            else handleIncomingUrl(url)
+        }
+        findViewById<View>(R.id.openBrowserButton).setOnClickListener {
+            val url = findViewById<TextInputEditText>(R.id.homeUrlInput).text?.toString()?.trim().orEmpty()
+            startActivity(Intent(this, BrowserActivity::class.java).putExtra(BrowserActivity.EXTRA_URL, url))
+        }
+        findViewById<View>(R.id.pasteUrlButton).setOnClickListener {
+            val clip = getSystemService(android.content.ClipboardManager::class.java)?.primaryClip
+            val text = clip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
+            findViewById<TextInputEditText>(R.id.homeUrlInput).setText(text)
+        }
         findViewById<View>(R.id.historyShortcut).setOnClickListener { startActivity(Intent(this, HistoryActivity::class.java)) }
         captureFab.setOnClickListener {
             it.animate().scaleX(0.92f).scaleY(0.92f).setDuration(80).withEndAction { it.animate().scaleX(1f).scaleY(1f).setDuration(110).start() }.start()
@@ -81,6 +96,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         setCaptureUi(false)
+        handleIncomingIntent(intent)
         lifecycleScope.launch {
             AppDatabase.get(this@MainActivity).translationDao().observeLatest().collect { items ->
                 latest.text = items.firstOrNull()?.translatedText?.takeIf { it.isNotBlank() } ?: getString(R.string.no_translation_yet)
@@ -122,6 +138,33 @@ class MainActivity : AppCompatActivity() {
     private fun stopCapture() {
         startService(Intent(this, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
         setCaptureUi(false)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(intent: Intent?) {
+        val url = ShareLinkHandler.extract(intent) ?: return
+        val signature = "${intent?.action}:$url"
+        if (signature == handledIntentSignature) return
+        handledIntentSignature = signature
+        findViewById<TextInputEditText>(R.id.homeUrlInput)?.setText(url)
+        handleIncomingUrl(url)
+    }
+
+    private fun handleIncomingUrl(url: String) {
+        val resolved = VideoPlatformResolver.resolve(url)
+        if (resolved == null) {
+            Toast.makeText(this, R.string.browser_invalid_url, Toast.LENGTH_LONG).show()
+            return
+        }
+        val next = if (resolved.isDirectMedia) Intent(this, VideoPlayerActivity::class.java)
+            .putExtra(VideoPlayerActivity.EXTRA_URL, resolved.uri.toString())
+        else Intent(this, BrowserActivity::class.java).putExtra(BrowserActivity.EXTRA_URL, resolved.uri.toString())
+        startActivity(next)
     }
 
     override fun onResume() {

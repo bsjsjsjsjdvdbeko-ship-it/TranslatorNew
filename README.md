@@ -1,33 +1,55 @@
-# Sari Subtitle — Stage 4 (Groq + Google Translation / MyMemory)
+# Sari Subtitle — Stage 8
 
-This ZIP is a source-code update based on the supplied Stage 3 archive.
+Stage 8 is an in-place extension of the supplied Stage 7 Android source project. The existing
+applicationId (`com.sari.subtitle`), namespace, Kotlin/Gradle versions, Room database, capture
+service, overlay service and settings architecture were preserved.
 
-## Stage 4 changes
-- Groq transcription endpoint `https://api.groq.com/openai/v1/audio/transcriptions`, model `whisper-large-v3-turbo`, JSON response and configurable speech language (default `ar`).
-- Google Cloud Translation v2 and MyMemory translation client, with configurable source/target languages and optional MyMemory email.
-- HTTP request retries up to three attempts and Arabic-facing error messages.
-- 3-second chunk timing with 500 ms overlap primitives and transcript deduplication (`AudioChunker.kt`).
-- Overlay can show original + translated text, is draggable, and hides its text after 3 seconds without an update.
-- Settings screen for Groq key, Google key, MyMemory email, languages, font size and opacity values; Groq key signup shortcut.
+## What was implemented
 
-## Important limitation — not yet a complete live-captions APK
-Stage 3's `AudioCaptureService` is still a permission-gated scaffold. It does **not** yet capture another app's playback through a complete MediaProjection/AudioPlaybackCapture pipeline, create actual audio chunk files, or continuously feed those chunks into `TranslationRepository`. Consequently, this archive is a Stage 4 source update, not a verified ready-to-install real-time captioning app. `AudioChunker` currently provides chunk timing and transcript deduplication primitives; a device-side playback-capture pipeline must call them and write audio chunks. Android requires user consent for playback capture and some apps prohibit it.
+- Internal HTTPS WebView browser with URL bar, back/forward/refresh, progress/error states and external-browser fallback.
+- Secure WebView defaults: no file/content access, no mixed content, no JavaScript native bridge, and no automatic permission grants.
+- Platform URL resolver for YouTube, TikTok, Instagram/Reels, Facebook/Watch, X, Vimeo, Twitch and direct media URLs.
+- Android `ACTION_SEND` text/URL and `ACTION_VIEW` HTTP(S) link handling with `singleTop`/`onNewIntent` duplicate protection.
+- Direct-media playback through the existing Media3/ExoPlayer screen.
+- Optional remote SRT/WebVTT subtitle track support for direct media URLs.
+- A live subtitle state bus connected to the existing capture/translation pipeline so translated results can appear inside the video player as well as the existing overlay.
+- MediaProjection stop callback and existing coroutine cancellation/resource cleanup retained.
+- SRT/WebVTT parsing utility with automated JVM tests.
+- No API keys are included.
 
-## Setup
-1. Open `SariSubtitle` in Android Studio with JDK 17 and Android SDK 35.
-2. Add a Groq key in Settings; get one at https://console.groq.com/keys.
-3. Select Google and add a Google Cloud Translation API key, or choose MyMemory without a key.
-4. Grant overlay permission. API usage limits and provider policies apply; MyMemory is not an unlimited service.
-5. Keep API keys private and do not commit them to a public repository.
+## Platform policy / capability boundary
 
-Build status: source files were packaged; no successful Android build or on-device end-to-end test is claimed here.
+A normal webpage URL is not treated as a direct media file. Known social/video platforms are opened in the internal browser rather than scraped for protected media. The application does not bypass login, DRM, geographic restrictions, signed URLs, anti-bot controls or platform access rules.
 
-## Stage 7: direct-stream player (experimental)
+Playback capture remains subject to Android's `AudioPlaybackCapture` rules and the source application's capture policy. If the source does not permit capture, Sari Subtitle reports failure rather than attempting a bypass.
 
-Stage 7 adds an in-app Media3/ExoPlayer screen for compatible direct HTTP(S) media URLs. The player requests the media stream once and does not download a complete local copy. The user can explicitly grant Android MediaProjection consent and start the existing eligible-playback-audio transcription flow while the video plays.
+## Groq
 
-Limitations to know:
-- A direct media URL (for example, a compatible MP4/HLS/DASH URL) is required. A webpage URL such as a YouTube watch page is not itself a media stream and is not supported by this screen.
-- Playback capture is subject to Android's audio-capture policy and the source app/stream's restrictions, including DRM.
-- The current transcription pipeline translates short audio chunks after recognition. It does not yet produce word-level or sentence-level media timestamps, so subtitle timing is near-real-time rather than frame-accurate. Exact synchronization requires carrying media playback timestamps through transcription and aligning translated segments to the player's current position.
-- Build validation in the development environment was limited to XML parsing and source/archive checks; run `gradle assembleDebug` in Android Studio or CI to validate compilation against the Android SDK.
+Stage 8 keeps Groq's official speech-to-text endpoint and `whisper-large-v3-turbo`. Current Groq documentation lists it as multilingual and supports `json`, `text`, and `verbose_json`; segment/word timestamps require `verbose_json`. The current live path remains low-latency chunk transcription, while precise player synchronization is only available for subtitle sources that provide actual timestamps.
+
+## Configuration
+
+1. Open the project in Android Studio with JDK 17 and Android SDK 35.
+2. Add the user's Groq API key in Settings. Never commit it.
+3. Select the translation provider and configure its key/email only when required.
+4. Grant MediaProjection consent when starting live playback capture.
+5. Grant overlay permission only if floating captions are wanted.
+
+## External services
+
+- Groq Speech-to-Text: required for live transcription.
+- Google Cloud Translation: optional.
+- MyMemory: optional.
+- Network access is HTTPS only.
+
+## Verification
+
+The source tree and XML were inspected after modification. Automated JVM tests were added for subtitle parsing and platform URL resolution. This environment did not contain Gradle/Android SDK tooling and could not resolve external Gradle downloads, so `assembleDebug`, Gradle Sync, and device/end-to-end tests were **not claimed as executed successfully**.
+
+## Known limitations
+
+- Social platform webpage playback depends on the platform's own WebView compatibility and policies; a page URL is not converted into a protected media URL.
+- Some platforms may require their official application or external browser.
+- Playback capture can return no audio when the source application disallows capture or uses protected playback.
+- The live transcription path does not invent frame-accurate timestamps. It uses arrival/capture timing for live display; exact synchronization is only guaranteed when a real subtitle track supplies timestamps.
+- Microphone fallback is not silently enabled; the current live path intentionally remains playback-capture based.
