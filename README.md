@@ -58,3 +58,33 @@ The source tree and XML were inspected after modification. Automated JVM tests w
 ## DRM الرسمي
 
 للمحتوى المحمي يمكن إدخال رابط ترخيص Widevine الرسمي عبر HTTPS في شاشة المشغل. التطبيق لا يستخرج مفاتيح DRM ولا يتجاوز الحماية. نجاح تشغيل DRM لا يعني أن `AudioPlaybackCapture` مسموح به؛ إذا منع المصدر التقاط الصوت، تبقى الترجمة الحية غير متاحة لهذا المصدر.
+
+## Stage 9 — Context-Aware Translation
+
+Stage 9 upgrades live translation from independent audio chunks to a context-aware pipeline:
+
+- 2-second audio windows with 400 ms overlap to reduce boundary word loss.
+- Timestamp-aware STT using Groq `verbose_json` segment timestamps when returned.
+- Limited in-session context window for previous subtitles.
+- User-editable terminology glossary (`English term = Arabic term`).
+- Lightweight speaker-label memory when transcripts contain `Name:` labels; this is not automatic identity recognition.
+- Local Room Translation Memory to avoid translating identical text repeatedly.
+- Bounded audio processing queue to prevent an ever-growing backlog when the network is slow.
+- Context-aware Groq translation uses the currently supported `openai/gpt-oss-20b` model; it does not use the deprecated `llama-3.3-70b-versatile` model.
+- Google/MyMemory remain available as existing fallback providers, but their APIs do not receive the same LLM context prompt.
+
+Stage 9 does not bypass DRM, platform restrictions, login requirements, or Android playback-capture restrictions. It also does not claim human-level translation quality or a fixed end-to-end latency.
+
+
+## Stage 10 — Human-Quality Translation Engine
+
+Stage 10 upgrades the translation layer from a single AI pass to a subtitle-editor workflow when Groq + **Human Quality** is selected:
+
+- **Draft pass:** translates with dialogue-aware context, glossary, speaker/name notes, tone and subtitle concision rules.
+- **Senior-review pass:** reviews the original + draft and fixes literal wording, pronouns, terminology drift, tone, omissions/additions and unnatural Arabic phrasing.
+- **Paired episode context:** the rolling context now remembers recent source + translated dialogue, not source text alone.
+- **Terminology consistency:** user glossary remains mandatory when applicable.
+- **Automatic speech-language mode:** new installations default STT language to `auto`, allowing Whisper to detect the spoken language instead of forcing Arabic.
+- **Quality selector:** Fast / Balanced / Human Quality. Human Quality costs an extra translation request and can increase latency.
+
+This is designed to move the output substantially closer to professional subtitle practice, but it cannot guarantee human parity: a real human still has access to the complete episode, visual context, cultural knowledge, character identity, and final editorial judgment.

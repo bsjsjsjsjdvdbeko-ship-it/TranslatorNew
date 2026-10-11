@@ -15,7 +15,13 @@
 <string name="player_translation_running">الترجمة نشطة. اسمح بالتقاط الصوت، وقد تتأخر الترجمة قليلاً.</string>
 <string name="player_invalid_url">أدخل رابط فيديو صحيحاً يبدأ بـ http:// أو https://</string>
 <string name="player_load_first">شغّل فيديو أولاً قبل بدء الترجمة.</string>
-<string name="player_error">تعذر تشغيل الفيديو: %1$s</string><string name="about_description">Sari Subtitle — ترجمة صوتية فورية مع نافذة ترجمة عائمة.</string>
+<string name="player_error">تعذر تشغيل الفيديو: %1$s</string><string name="translation_quality_title">جودة الترجمة</string><string name="translation_quality_description">وضع Human Quality يمرر الترجمة على مرحلتين: مسودة ثم مراجعة لغوية وسياقية. هذا يرفع الجودة لكنه يزيد زمن الاستجابة واستهلاك API.</string><string name="context_engine_title">محرك الترجمة السياقية — Stage 10</string>
+<string name="context_engine_description">يحافظ على سياق المقاطع السابقة والمصطلحات أثناء الحلقة. لا يخزن الصوت؛ تُحفظ فقط ذاكرة نصية مختصرة للترجمة.</string>
+<string name="context_aware_translation">استخدام السياق لتحسين الترجمة</string>
+<string name="translation_memory">ذاكرة الترجمة لتجنب تكرار الطلبات</string>
+<string name="glossary_hint">قاموس المصطلحات</string>
+<string name="glossary_example">مثال: The Council = المجلس\nThe Gate = البوابة</string>
+<string name="about_description">Sari Subtitle — ترجمة صوتية فورية مع نافذة ترجمة عائمة.</string>
 <string name="video_link">رابط الفيديو</string>
 <string name="paste_url">لصق</string><string name="open_browser">فتح في المتصفح</string>
 <string name="browser_title">متصفح Sari Subtitle</string><string name="open_external">المتصفح الخارجي</string>

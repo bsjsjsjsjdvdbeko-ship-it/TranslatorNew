@@ -15,7 +15,11 @@ data class AppSettings(
     val fontSize: Int = 30,
     val opacity: Int = 82,
     val myMemoryEmail: String = "",
-    val speechLanguage: String = "ar"
+    val speechLanguage: String = "auto",
+    val contextAwareTranslation: Boolean = true,
+    val translationMemoryEnabled: Boolean = true,
+    val glossary: String = "",
+    val translationQuality: Int = SettingsRepository.QUALITY_HUMAN
 )
 
 class SettingsRepository(context: Context) {
@@ -37,7 +41,11 @@ class SettingsRepository(context: Context) {
         font: Int,
         opacity: Int,
         email: String,
-        speechLanguage: String
+        speechLanguage: String,
+        contextAwareTranslation: Boolean = true,
+        translationMemoryEnabled: Boolean = true,
+        glossary: String = "",
+        translationQuality: Int = QUALITY_HUMAN
     ) = withContext(Dispatchers.IO) {
         val p = prefs ?: throw IllegalStateException("تعذر تفعيل التخزين المشفر على هذا الجهاز.")
         p.edit()
@@ -51,6 +59,10 @@ class SettingsRepository(context: Context) {
             .putInt("opacity", opacity.coerceIn(0, 100))
             .putString("email", email)
             .putString("speechLanguage", speechLanguage)
+            .putBoolean("contextAwareTranslation", contextAwareTranslation)
+            .putBoolean("translationMemoryEnabled", translationMemoryEnabled)
+            .putString("glossary", glossary)
+            .putInt("translationQuality", translationQuality.coerceIn(QUALITY_FAST, QUALITY_HUMAN))
             .apply()
     }
 
@@ -71,7 +83,11 @@ class SettingsRepository(context: Context) {
             fontSize = p.getInt("font", 30),
             opacity = p.getInt("opacity", 82),
             myMemoryEmail = p.getString("email", "").orEmpty(),
-            speechLanguage = p.getString("speechLanguage", "ar").orEmpty()
+            speechLanguage = p.getString("speechLanguage", "ar").orEmpty(),
+            contextAwareTranslation = p.getBoolean("contextAwareTranslation", true),
+            translationMemoryEnabled = p.getBoolean("translationMemoryEnabled", true),
+            glossary = p.getString("glossary", "").orEmpty(),
+            translationQuality = p.getInt("translationQuality", QUALITY_HUMAN).coerceIn(QUALITY_FAST, QUALITY_HUMAN)
         )
     }
 
@@ -79,5 +95,8 @@ class SettingsRepository(context: Context) {
         const val PROVIDER_GROQ = 0
         const val PROVIDER_GOOGLE = 1
         const val PROVIDER_MYMEMORY = 2
+        const val QUALITY_FAST = 0
+        const val QUALITY_BALANCED = 1
+        const val QUALITY_HUMAN = 2
     }
 }

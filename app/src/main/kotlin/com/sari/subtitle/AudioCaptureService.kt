@@ -20,10 +20,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.channels.Channel
 import java.io.File
 
 /**
- * Captures eligible device playback via MediaProjection and transcribes each three-second WAV
+ * Captures eligible device playback via MediaProjection and transcribes each overlapping WAV
  * chunk on a background coroutine. Android only permits playback capture for apps/usages that
  * allow capture; this does not bypass DRM or other apps' capture restrictions.
  */
@@ -34,6 +35,8 @@ class AudioCaptureService : Service() {
     private var captureThread: Thread? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var chunker: AudioChunker? = null
+    private var translationWorker: kotlinx.coroutines.Job? = null
+    private val chunkQueue = Channel<AudioChunk>(capacity = 2)
 
     override fun onCreate() {
         super.onCreate()
@@ -120,7 +123,28 @@ class AudioCaptureService : Service() {
             check(audioRecord.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord initialization failed." }
             recorder = audioRecord
             chunker = AudioChunker(this)
+            TranslationRepository(applicationContext).resetEpisodeContext()
             running = true
+            translationWorker?.cancel()
+            translationWorker = serviceScope.launch {
+                for (chunk in chunkQueue) {
+                    try {
+                        TranslationRepository(applicationContext).translateAudio(
+                            chunk.file, chunk.startElapsedMs, chunk.durationMs
+                        )
+                    } catch (e: Exception) {
+                        if (e !is kotlinx.coroutines.CancellationException) {
+                            Log.e(TAG, "Chunk transcription/translation failed", e)
+                            startService(Intent(applicationContext, OverlayService::class.java)
+                                .setAction(OverlayService.ACTION_UPDATE)
+                                .putExtra(OverlayService.EXTRA_ORIGINAL, "Subtitle error")
+                                .putExtra(OverlayService.EXTRA_TRANSLATED, e.message ?: "Translation failed"))
+                        }
+                    } finally {
+                        chunk.file.delete()
+                    }
+                }
+            }
             audioRecord.startRecording()
             captureThread = Thread({ captureLoop(audioRecord) }, "SariAudioCapture").apply { start() }
             Log.i(TAG, "Device playback capture started.")
@@ -152,23 +176,8 @@ class AudioCaptureService : Service() {
                 }
                 chunker?.addSamples(samples, count)
                 while (running && chunker?.hasChunkReady() == true) {
-                    val file = try { chunker?.getNextChunk() } catch (_: Exception) { null } ?: break
-                    serviceScope.launch {
-                        try {
-                            TranslationRepository(applicationContext).translateAudio(file)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Chunk transcription/translation failed", e)
-                            if (e !is kotlinx.coroutines.CancellationException) {
-                                val message = e.message ?: "Translation failed"
-                                startService(Intent(applicationContext, OverlayService::class.java)
-                                    .setAction(OverlayService.ACTION_UPDATE)
-                                    .putExtra(OverlayService.EXTRA_ORIGINAL, "Subtitle error")
-                                    .putExtra(OverlayService.EXTRA_TRANSLATED, message))
-                            }
-                        } finally {
-                            file.delete()
-                        }
-                    }
+                    val chunk = try { chunker?.getNextChunkInfo() } catch (_: Exception) { null } ?: break
+                    if (!chunkQueue.trySend(chunk).isSuccess) chunk.file.delete()
                 }
             } else if (count < 0) {
                 Log.e(TAG, "AudioRecord.read returned $count")
@@ -194,7 +203,11 @@ class AudioCaptureService : Service() {
         captureThread = null
         try { projection?.stop() } catch (_: Exception) { }
         projection = null
+        chunker?.clear()
         chunker = null
+        while (true) { val pending = chunkQueue.tryReceive().getOrNull() ?: break; pending.file.delete() }
+        translationWorker?.cancel()
+        translationWorker = null
         if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else {
             @Suppress("DEPRECATION") stopForeground(true)
         }
@@ -208,6 +221,8 @@ class AudioCaptureService : Service() {
         recorder = null
         try { projection?.stop() } catch (_: Exception) { }
         projection = null
+        translationWorker?.cancel()
+        while (true) { val pending = chunkQueue.tryReceive().getOrNull() ?: break; pending.file.delete() }
         serviceScope.cancel()
         super.onDestroy()
     }

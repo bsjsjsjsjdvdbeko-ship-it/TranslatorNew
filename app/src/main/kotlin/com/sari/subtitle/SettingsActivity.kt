@@ -13,6 +13,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import com.google.android.material.slider.Slider
 import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.materialswitch.MaterialSwitch
 import kotlinx.coroutines.launch
 
 class SettingsActivity : AppCompatActivity() {
@@ -27,6 +28,10 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var opacity: Slider
     private lateinit var fontValue: TextView
     private lateinit var opacityValue: TextView
+    private lateinit var contextAwareSwitch: MaterialSwitch
+    private lateinit var translationMemorySwitch: MaterialSwitch
+    private lateinit var glossaryInput: TextInputEditText
+    private lateinit var qualitySpinner: MaterialAutoCompleteTextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,6 +53,12 @@ class SettingsActivity : AppCompatActivity() {
         opacity = findViewById(R.id.opacitySeek)
         fontValue = findViewById(R.id.fontSizeValue)
         opacityValue = findViewById(R.id.opacityValue)
+        contextAwareSwitch = findViewById(R.id.contextAwareSwitch)
+        translationMemorySwitch = findViewById(R.id.translationMemorySwitch)
+        glossaryInput = findViewById(R.id.glossaryInput)
+        qualitySpinner = findViewById(R.id.qualitySpinner)
+        qualitySpinner.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, listOf("سريع — Fast", "متوازن — Balanced", "بجودة بشرية — Human Quality")))
+        qualitySpinner.setOnClickListener { qualitySpinner.showDropDown() }
         fontSize.valueFrom = 12f; fontSize.valueTo = 48f; fontSize.stepSize = 1f
         opacity.valueFrom = 0f; opacity.valueTo = 100f; opacity.stepSize = 1f
         fontSize.addOnChangeListener { _, value, _ -> fontValue.text = "${value.toInt()} sp" }
@@ -62,6 +73,10 @@ class SettingsActivity : AppCompatActivity() {
             speechLang.setText(s.speechLanguage); email.setText(s.myMemoryEmail)
             fontSize.value = s.fontSize.coerceIn(12, 48).toFloat(); opacity.value = s.opacity.coerceIn(0, 100).toFloat()
             fontValue.text = "${s.fontSize} sp"; opacityValue.text = "${s.opacity}%"
+            contextAwareSwitch.isChecked = s.contextAwareTranslation
+            translationMemorySwitch.isChecked = s.translationMemoryEnabled
+            glossaryInput.setText(s.glossary)
+            qualitySpinner.setText(listOf("سريع — Fast", "متوازن — Balanced", "بجودة بشرية — Human Quality")[s.translationQuality.coerceIn(0, 2)], false)
         }
     }
 
@@ -76,7 +91,11 @@ class SettingsActivity : AppCompatActivity() {
                     target = targetLang.text?.toString()?.trim().orEmpty().ifBlank { "ar" },
                     font = fontSize.value.toInt(), opacity = opacity.value.toInt(),
                     email = email.text?.toString()?.trim().orEmpty(),
-                    speechLanguage = speechLang.text?.toString()?.trim().orEmpty().ifBlank { "ar" }
+                    speechLanguage = speechLang.text?.toString()?.trim().orEmpty().ifBlank { "ar" },
+                    contextAwareTranslation = contextAwareSwitch.isChecked,
+                    translationMemoryEnabled = translationMemorySwitch.isChecked,
+                    glossary = glossaryInput.text?.toString().orEmpty(),
+                    translationQuality = listOf("سريع — Fast", "متوازن — Balanced", "بجودة بشرية — Human Quality").indexOf(qualitySpinner.text.toString()).coerceIn(0, 2)
                 )
                 Toast.makeText(this@SettingsActivity, R.string.settings_saved, Toast.LENGTH_SHORT).show()
                 finish()
