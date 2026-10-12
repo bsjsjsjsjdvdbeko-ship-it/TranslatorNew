@@ -36,7 +36,7 @@ class AudioCaptureService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var chunker: AudioChunker? = null
     private var translationWorker: kotlinx.coroutines.Job? = null
-    private val chunkQueue = Channel<AudioChunk>(capacity = 2)
+    private val chunkQueue = Channel<AudioChunk>(capacity = 1)
 
     override fun onCreate() {
         super.onCreate()
@@ -177,7 +177,12 @@ class AudioCaptureService : Service() {
                 chunker?.addSamples(samples, count)
                 while (running && chunker?.hasChunkReady() == true) {
                     val chunk = try { chunker?.getNextChunkInfo() } catch (_: Exception) { null } ?: break
-                    if (!chunkQueue.trySend(chunk).isSuccess) chunk.file.delete()
+                    LiveSubtitleBus.markLatestCapture(chunk.startElapsedMs)
+                    if (!chunkQueue.trySend(chunk).isSuccess) {
+                        // Keep latency bounded: discard the older queued window and keep the newest one.
+                        chunkQueue.tryReceive().getOrNull()?.file?.delete()
+                        if (!chunkQueue.trySend(chunk).isSuccess) chunk.file.delete()
+                    }
                 }
             } else if (count < 0) {
                 Log.e(TAG, "AudioRecord.read returned $count")

@@ -1,0 +1,1052 @@
+Sari Subtitle Stage 12 — Full Source Snapshot
+This file contains the complete contents of every Stage 12 modified/new source/config file listed below.
+
+
+====================================================================================================
+FILE: app/build.gradle.kts
+====================================================================================================
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.kapt")
+}
+android {
+    namespace = "com.sari.subtitle"
+    compileSdk = 35
+    defaultConfig {
+        applicationId = "com.sari.subtitle"
+        minSdk = 29
+        targetSdk = 35
+        versionCode = 3
+        versionName = "3.0.0"
+    }
+    buildFeatures { buildConfig = true }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = "17" }
+}
+dependencies {
+    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("com.google.android.material:material:1.12.0")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.media3:media3-exoplayer:1.5.1")
+    implementation("androidx.media3:media3-ui:1.5.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.5.1")
+    implementation("androidx.media3:media3-exoplayer-dash:1.5.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1")
+    testImplementation(kotlin("test"))
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("com.alphacephei:vosk-android:0.3.47")
+}
+
+
+====================================================================================================
+FILE: .github/workflows/build.yml
+====================================================================================================
+name: Build Sari Subtitle APK
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sari-subtitle-stage12-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+
+====================================================================================================
+FILE: app/src/main/AndroidManifest.xml
+====================================================================================================
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:allowBackup="false"
+        android:allowAudioPlaybackCapture="true"
+        android:supportsRtl="true"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.SariSubtitle"
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config">
+        <activity android:name=".BrowserActivity" android:exported="false" />
+        <activity android:name=".VideoPlayerActivity" android:exported="false" />
+        <activity android:name=".SettingsActivity" android:exported="false" />
+        <activity android:name=".HistoryActivity" android:exported="false" />
+        <activity android:name=".SplashActivity" android:exported="true" android:theme="@style/Theme.SariSubtitle.Splash">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity>
+        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="text/uri-list" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+            </intent-filter>
+        </activity>
+        <service android:name=".OverlayService" android:exported="false" />
+        <service
+            android:name=".AudioCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection|microphone" />
+    </application>
+</manifest>
+
+
+====================================================================================================
+FILE: app/src/main/kotlin/com/sari/subtitle/SettingsRepository.kt
+====================================================================================================
+package com.sari.subtitle
+
+import android.content.Context
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+data class AppSettings(
+    val provider: Int = SettingsRepository.PROVIDER_MYMEMORY,
+    val speechKey: String = "",
+    val translationKey: String = "",
+    val sourceLanguage: String = "auto",
+    val targetLanguage: String = "ar",
+    val fontSize: Int = 30,
+    val opacity: Int = 82,
+    val myMemoryEmail: String = "",
+    val speechLanguage: String = "auto",
+    val contextAwareTranslation: Boolean = true,
+    val translationMemoryEnabled: Boolean = true,
+    val glossary: String = "",
+    val translationQuality: Int = SettingsRepository.QUALITY_HUMAN,
+    val sttProvider: Int = SettingsRepository.STT_GROQ,
+    val deepgramKey: String = "",
+    val openAiKey: String = "",
+    val contextPrompt: String = "",
+    val subtitlePosition: Int = SettingsRepository.POS_BOTTOM,
+    val calibrationMs: Long = 0L
+)
+
+class SettingsRepository(context: Context) {
+    private val prefs = try {
+        val master=MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
+        EncryptedSharedPreferences.create(context,"sari_secure_settings",master,EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM)
+    } catch (_:Exception){null}
+
+    suspend fun save(provider:Int,speechKey:String,translationKey:String,source:String,target:String,font:Int,opacity:Int,email:String,speechLanguage:String,contextAwareTranslation:Boolean=true,translationMemoryEnabled:Boolean=true,glossary:String="",translationQuality:Int=QUALITY_HUMAN,sttProvider:Int=STT_GROQ,deepgramKey:String="",openAiKey:String="",contextPrompt:String="",subtitlePosition:Int=POS_BOTTOM,calibrationMs:Long=0L)=withContext(Dispatchers.IO){
+        val p=prefs ?: throw IllegalStateException("تعذر تفعيل التخزين المشفر على هذا الجهاز.")
+        p.edit().putInt("provider",provider.coerceIn(PROVIDER_GROQ,PROVIDER_OPENAI)).putBoolean("providerSchemaV3",true)
+            .putString("speechKey",speechKey).putString("translationKey",translationKey).putString("source",source).putString("target",target)
+            .putInt("font",font.coerceIn(12,48)).putInt("opacity",opacity.coerceIn(0,100)).putString("email",email).putString("speechLanguage",speechLanguage)
+            .putBoolean("contextAwareTranslation",contextAwareTranslation).putBoolean("translationMemoryEnabled",translationMemoryEnabled).putString("glossary",glossary)
+            .putInt("translationQuality",translationQuality.coerceIn(QUALITY_FAST,QUALITY_HUMAN)).putInt("sttProvider",sttProvider.coerceIn(STT_GROQ,STT_VOSK))
+            .putString("deepgramKey",deepgramKey).putString("openAiKey",openAiKey).putString("contextPrompt",contextPrompt.take(4000))
+            .putInt("subtitlePosition",subtitlePosition.coerceIn(POS_TOP,POS_BOTTOM)).putLong("calibrationMs",calibrationMs.coerceIn(-10000L,10000L)).apply()
+    }
+
+    suspend fun load():AppSettings=withContext(Dispatchers.IO){
+        val p=prefs ?: return@withContext AppSettings()
+        val stored=p.getInt("provider",PROVIDER_MYMEMORY)
+        val provider=if(p.getBoolean("providerSchemaV3",false)) stored.coerceIn(0,3) else if(p.getBoolean("providerSchemaV2",false)) stored.coerceIn(0,2) else if(stored==0) PROVIDER_GOOGLE else PROVIDER_MYMEMORY
+        AppSettings(provider=provider,speechKey=p.getString("speechKey","").orEmpty(),translationKey=p.getString("translationKey","").orEmpty(),sourceLanguage=p.getString("source","auto").orEmpty(),targetLanguage=p.getString("target","ar").orEmpty(),fontSize=p.getInt("font",30),opacity=p.getInt("opacity",82),myMemoryEmail=p.getString("email","").orEmpty(),speechLanguage=p.getString("speechLanguage","auto").orEmpty(),contextAwareTranslation=p.getBoolean("contextAwareTranslation",true),translationMemoryEnabled=p.getBoolean("translationMemoryEnabled",true),glossary=p.getString("glossary","").orEmpty(),translationQuality=p.getInt("translationQuality",QUALITY_HUMAN).coerceIn(0,2),sttProvider=p.getInt("sttProvider",STT_GROQ).coerceIn(0,2),deepgramKey=p.getString("deepgramKey","").orEmpty(),openAiKey=p.getString("openAiKey","").orEmpty(),contextPrompt=p.getString("contextPrompt","").orEmpty(),subtitlePosition=p.getInt("subtitlePosition",POS_BOTTOM).coerceIn(0,2),calibrationMs=p.getLong("calibrationMs",0L))
+    }
+    companion object{
+        const val PROVIDER_GROQ=0; const val PROVIDER_GOOGLE=1; const val PROVIDER_MYMEMORY=2; const val PROVIDER_OPENAI=3
+        const val STT_GROQ=0; const val STT_DEEPGRAM=1; const val STT_VOSK=2
+        const val QUALITY_FAST=0; const val QUALITY_BALANCED=1; const val QUALITY_HUMAN=2
+        const val POS_TOP=0; const val POS_CENTER=1; const val POS_BOTTOM=2
+    }
+}
+
+
+====================================================================================================
+FILE: app/src/main/kotlin/com/sari/subtitle/SttClient.kt
+====================================================================================================
+package com.sari.subtitle
+
+import java.io.File
+
+data class WordTimestamp(val word: String, val start: Double, val end: Double)
+data class Utterance(val text: String, val start: Double, val end: Double)
+data class SttResult(
+    val text: String,
+    val language: String? = null,
+    val words: List<WordTimestamp> = emptyList(),
+    val utterances: List<Utterance> = emptyList(),
+    val confidence: Double? = null,
+    val success: Boolean = true,
+    val error: String? = null
+)
+
+interface SttClient {
+    suspend fun transcribe(file: File, language: String = "auto", contextPrompt: String = ""): SttResult
+}
+
+
+====================================================================================================
+FILE: app/src/main/kotlin/com/sari/subtitle/DeepgramClient.kt
+====================================================================================================
+package com.sari.subtitle
+
+import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.MediaType.Companion.toMediaType
+import org.json.JSONObject
+import java.io.File
+import java.util.concurrent.TimeUnit
+
+class DeepgramClient(
+    private val apiKey: String,
+    private val http: OkHttpClient = defaultClient()
+) : SttClient {
+    override suspend fun transcribe(file: File, language: String, contextPrompt: String): SttResult = withContext(Dispatchers.IO) {
+        if (apiKey.isBlank()) return@withContext SttResult("", success = false, error = "أدخل مفتاح Deepgram API.")
+        if (!file.exists() || file.length() == 0L) return@withContext SttResult("", success = false, error = "الملف الصوتي فارغ.")
+        val url = "https://api.deepgram.com/v1/listen".toHttpUrl().newBuilder()
+            .addQueryParameter("model", "nova-2")
+            .addQueryParameter("language", if (language.isBlank() || language == "auto") "ar" else language)
+            .addQueryParameter("smart_format", "true")
+            .addQueryParameter("punctuate", "true")
+            .addQueryParameter("utterances", "true")
+            .addQueryParameter("diarize_model", "latest")
+            .apply {
+                contextPrompt.split(',', '\n', ';').map { it.trim() }.filter { it.isNotBlank() }.take(20).forEach { addQueryParameter("keywords", it) }
+            }
+            .build()
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", "Token $apiKey")
+            .header("Content-Type", "audio/wav")
+            .post(file.asRequestBody("audio/wav".toMediaType()))
+            .build()
+        var last: Exception? = null
+        repeat(3) { attempt ->
+            try {
+                http.newCall(request).execute().use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) error("Deepgram HTTP ${response.code}: ${raw.take(180)}")
+                    return@withContext parse(raw)
+                }
+            } catch (e: Exception) {
+                last = e
+                Log.d(TAG, "Deepgram attempt ${attempt + 1} failed: ${e.message}")
+                if (attempt < 2) delay(500L * (1L shl attempt))
+            }
+        }
+        SttResult("", success = false, error = "فشل Deepgram بعد 3 محاولات: ${last?.message ?: "unknown"}")
+    }
+
+    private fun parse(raw: String): SttResult {
+        return try {
+            val json = JSONObject(raw)
+            val results = json.optJSONObject("results") ?: return SttResult("", success = false, error = "استجابة Deepgram غير صالحة.")
+            val channels = results.optJSONArray("channels") ?: return SttResult("", success = false, error = "لم تُرجع Deepgram قنوات صوتية.")
+            val alt = channels.optJSONObject(0)?.optJSONArray("alternatives")?.optJSONObject(0)
+                ?: return SttResult("", success = false, error = "لم تُرجع Deepgram transcript.")
+            val text = alt.optString("transcript").trim()
+            val confidence = if (alt.has("confidence")) alt.optDouble("confidence") else null
+            val words = mutableListOf<WordTimestamp>()
+            alt.optJSONArray("words")?.let { a ->
+                for (i in 0 until a.length()) {
+                    val w = a.optJSONObject(i) ?: continue
+                    val word = w.optString("punctuated_word", w.optString("word")).trim()
+                    val start = w.optDouble("start", Double.NaN)
+                    val end = w.optDouble("end", Double.NaN)
+                    if (word.isNotBlank() && start.isFinite() && end.isFinite()) words += WordTimestamp(word, start, end)
+                }
+            }
+            val utterances = mutableListOf<Utterance>()
+            results.optJSONArray("utterances")?.let { a ->
+                for (i in 0 until a.length()) {
+                    val u = a.optJSONObject(i) ?: continue
+                    val t = u.optString("transcript").trim()
+                    val start = u.optDouble("start", Double.NaN)
+                    val end = u.optDouble("end", Double.NaN)
+                    if (t.isNotBlank() && start.isFinite() && end.isFinite()) utterances += Utterance(t, start, end)
+                }
+            }
+            SttResult(text, language = "ar", words = words, utterances = utterances, confidence = confidence)
+        } catch (e: Exception) {
+            SttResult("", success = false, error = "تعذر تحليل استجابة Deepgram: ${e.message}")
+        }
+    }
+
+    suspend fun testKey(): Boolean {
+        if (apiKey.isBlank()) return false
+        return try {
+            val request = Request.Builder()
+                .url("https://api.deepgram.com/v1/projects")
+                .header("Authorization", "Token $apiKey")
+                .get().build()
+            http.newCall(request).execute().use { it.isSuccessful }
+        } catch (e: Exception) {
+            Log.d(TAG, "Deepgram key test failed: ${e.message}")
+            false
+        }
+    }
+
+    companion object {
+        private const val TAG = "SariDeepgram"
+        fun defaultClient() = OkHttpClient.Builder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(35, TimeUnit.SECONDS)
+            .build()
+    }
+}
+
+
+====================================================================================================
+FILE: app/src/main/kotlin/com/sari/subtitle/WhisperClient.kt
+====================================================================================================
+package com.sari.subtitle
+
+import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
+import org.json.JSONObject
+import java.io.File
+import java.util.concurrent.TimeUnit
+
+class WhisperClient(private val apiKey: String, private val http: OkHttpClient = defaultClient()) : SttClient {
+    override suspend fun transcribe(file: File, language: String, contextPrompt: String): SttResult = withContext(Dispatchers.IO) {
+        if (apiKey.isBlank()) return@withContext SttResult("", success = false, error = "أدخل مفتاح Groq API من الإعدادات.")
+        if (!file.exists() || file.length() == 0L) return@withContext SttResult("", success = false, error = "الملف الصوتي فارغ.")
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("model", "whisper-large-v3-turbo")
+            .addFormDataPart("response_format", "verbose_json")
+            .addFormDataPart("temperature", "0")
+            .apply { if (contextPrompt.isNotBlank()) addFormDataPart("prompt", contextPrompt.take(3_000)) }
+            .addFormDataPart("timestamp_granularities[]", "segment")
+            .apply { if (language.isNotBlank() && language != "auto") addFormDataPart("language", language) }
+            .addFormDataPart("file", file.name, file.asRequestBody("audio/wav".toMediaType())).build()
+        val request = Request.Builder().url("https://api.groq.com/openai/v1/audio/transcriptions").header("Authorization", "Bearer $apiKey").post(body).build()
+        executeWithRetry(request)
+    }
+
+    suspend fun detectLanguage(file: File): String? = withContext(Dispatchers.IO) {
+        if (apiKey.isBlank() || !file.exists()) return@withContext null
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("model", "whisper-large-v3-turbo")
+            .addFormDataPart("response_format", "verbose_json")
+            .addFormDataPart("temperature", "0")
+            .addFormDataPart("file", file.name, file.asRequestBody("audio/wav".toMediaType())).build()
+        val request = Request.Builder().url("https://api.groq.com/openai/v1/audio/transcriptions").header("Authorization", "Bearer $apiKey").post(body).build()
+        try {
+            http.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                JSONObject(response.body?.string().orEmpty()).optString("language").ifBlank { null }
+            }
+        } catch (e: Exception) { Log.d(TAG, "Language detection failed: ${e.message}"); null }
+    }
+
+    private suspend fun executeWithRetry(request: Request): SttResult {
+        var last: Exception? = null
+        repeat(3) { i ->
+            try {
+                http.newCall(request).execute().use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) error("Groq HTTP ${response.code}: ${raw.take(180)}")
+                    return parse(raw)
+                }
+            } catch (e: Exception) {
+                last = e; Log.d(TAG, "Groq STT attempt ${i + 1} failed: ${e.message}")
+                if (i < 2) delay(500L * (i + 1))
+            }
+        }
+        return SttResult("", success = false, error = "فشل Groq STT بعد 3 محاولات: ${last?.message}")
+    }
+
+    private fun parse(raw: String): SttResult = try {
+        val json = JSONObject(raw)
+        val text = json.optString("text").trim()
+        val segments = mutableListOf<Utterance>()
+        json.optJSONArray("segments")?.let { a -> for (i in 0 until a.length()) { val s=a.optJSONObject(i) ?: continue; val t=s.optString("text").trim(); val st=s.optDouble("start", Double.NaN); val en=s.optDouble("end", Double.NaN); if(t.isNotBlank()&&st.isFinite()&&en.isFinite()) segments += Utterance(t,st,en) } }
+        SttResult(text, json.optString("language").ifBlank { null }, utterances = segments, success = true)
+    } catch (e: Exception) { SttResult("", success = false, error = "تعذر تحليل Groq: ${e.message}") }
+
+    companion object { private const val TAG="SariWhisper"; fun defaultClient()=OkHttpClient.Builder().connectTimeout(20,TimeUnit.SECONDS).readTimeout(90,TimeUnit.SECONDS).callTimeout(120,TimeUnit.SECONDS).build() }
+}
+
+
+====================================================================================================
+FILE: app/src/main/kotlin/com/sari/subtitle/VoskClient.kt
+====================================================================================================
+package com.sari.subtitle
+
+import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import org.vosk.Model
+import org.vosk.Recognizer
+import java.io.File
+import java.io.FileInputStream
+
+class VoskClient(private val modelDir: File) : SttClient {
+    override suspend fun transcribe(file: File, language: String, contextPrompt: String): SttResult = withContext(Dispatchers.IO) {
+        if (!modelDir.exists()) return@withContext SttResult("", success=false, error="نموذج Vosk غير محمّل بعد.")
+        try {
+            val model = Model(modelDir.absolutePath)
+            val recognizer = Recognizer(model, 16_000f)
+            FileInputStream(file).use { input ->
+                val header = ByteArray(44); input.read(header)
+                val buffer = ByteArray(8192)
+                while (true) { val n=input.read(buffer); if(n<=0) break; recognizer.acceptWaveForm(buffer,0,n) }
+            }
+            val finalJson = JSONObject(recognizer.finalResult())
+            recognizer.close(); model.close()
+            val text=finalJson.optString("text").trim()
+            SttResult(text, language.ifBlank { "ar" }, confidence=null, success=text.isNotBlank())
+        } catch (e: Exception) { Log.d(TAG,"Vosk failed: ${e.message}"); SttResult("",success=false,error="فشل Vosk: ${e.message}") }
+    }
+    companion object { private const val TAG="SariVosk" }
+}
+
+
+====================================================================================================
+FILE: app/src/main/kotlin/com/sari/subtitle/ModelDownloader.kt
+====================================================================================================
+package com.sari.subtitle
+
+import android.content.Context
+import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.zip.ZipInputStream
+
+class ModelDownloader(private val context: Context) {
+    suspend fun downloadArabic(onProgress: (Int) -> Unit = {}): File = withContext(Dispatchers.IO) {
+        val root=File(context.filesDir,"vosk")
+        val model=File(root,"vosk-model-ar-mgb2-0.4")
+        if(File(model,"am/final.mdl").exists() || File(model,"conf/mfcc.conf").exists()) return@withContext model
+        root.mkdirs(); val zip=File(root,"arabic.zip")
+        val url=URL(ARABIC_URL); val conn=url.openConnection() as HttpURLConnection
+        conn.connectTimeout=20_000; conn.readTimeout=60_000
+        try {
+            val total=conn.contentLengthLong
+            conn.inputStream.use { input -> zip.outputStream().use { out -> val b=ByteArray(32*1024); var read=0L; while(true){val n=input.read(b); if(n<0)break; out.write(b,0,n); read+=n; if(total>0) onProgress(((read*100)/total).toInt().coerceIn(0,100))} } }
+            ZipInputStream(zip.inputStream().buffered()).use { zin ->
+                var entry=zin.nextEntry
+                while(entry!=null){ val safe=entry.name.replace("\\","/"); if(safe.contains("..")) {entry=zin.nextEntry; continue}; val out=File(root,safe); if(entry.isDirectory) out.mkdirs() else {out.parentFile?.mkdirs(); out.outputStream().use{zin.copyTo(it)}}; zin.closeEntry(); entry=zin.nextEntry }
+            }
+            val extracted=File(root,"vosk-model-ar-mgb2-0.4"); if(!extracted.exists()) error("لم يتم استخراج نموذج Vosk بشكل صحيح.")
+            zip.delete(); onProgress(100); extracted
+        } catch(e:Exception){ Log.d(TAG,"Model download failed: ${e.message}"); zip.delete(); throw e } finally { conn.disconnect() }
+    }
+    fun modelDirectory(): File=File(context.filesDir,"vosk/vosk-model-ar-mgb2-0.4")
+    companion object { const val ARABIC_URL="https://alphacephei.com/vosk/models/vosk-model-ar-mgb2-0.4.zip"; private const val TAG="SariModel" }
+}
+
+
+====================================================================================================
+FILE: app/src/main/kotlin/com/sari/subtitle/LanguageDetector.kt
+====================================================================================================
+package com.sari.subtitle
+
+import java.io.File
+
+class LanguageDetector(private val context: android.content.Context) {
+    suspend fun detect(firstAudio: File, groqKey: String): String? {
+        if (groqKey.isBlank()) return null
+        return WhisperClient(groqKey).detectLanguage(firstAudio)
+    }
+}
+
+
+====================================================================================================
+FILE: app/src/main/kotlin/com/sari/subtitle/OpenAiClient.kt
+====================================================================================================
+package com.sari.subtitle
+
+import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
+
+class OpenAiClient(
+    private val apiKey: String,
+    private val http: OkHttpClient = defaultClient()
+) {
+    suspend fun translate(text: String, source: String, target: String, context: TranslationContext): String = withContext(Dispatchers.IO) {
+        require(apiKey.isNotBlank()) { "أدخل مفتاح OpenAI API في الإعدادات." }
+        val system = buildString {
+            append("أنت مترجم محترف. ترجم النص إلى العربية بأسلوب طبيعي وواضح. حافظ على الأسماء والمصطلحات. لا تُضف معلومات غير موجودة. اجعل الترجمة مختصرة ومناسبة للترجمة المرئية. ")
+            append("لغة المصدر: ").append(if (source.isBlank()) "auto" else source).append(". الهدف: ").append(target).append(". ")
+            append("لا تشرح ولا تضع ملاحظات؛ أعد الترجمة فقط.\n")
+            append(contextText(context))
+        }
+        val payload = JSONObject()
+            .put("model", "gpt-4o-mini")
+            .put("temperature", 0.3)
+            .put("max_tokens", 500)
+            .put("messages", JSONArray()
+                .put(JSONObject().put("role", "system").put("content", system))
+                .put(JSONObject().put("role", "user").put("content", text)))
+            .toString()
+        val request = Request.Builder().url("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", "Bearer $apiKey")
+            .header("Content-Type", "application/json")
+            .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .build()
+        var last: Exception? = null
+        repeat(3) { i ->
+            try {
+                return@withContext http.newCall(request).execute().use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) error("OpenAI HTTP ${response.code}: ${raw.take(180)}")
+                    val result = JSONObject(raw).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content").trim()
+                    if (result.isBlank()) error("OpenAI أعاد ترجمة فارغة.")
+                    result
+                }
+            } catch (e: Exception) {
+                last = e
+                Log.d(TAG, "OpenAI attempt ${i + 1} failed: ${e.message}")
+                if (i < 2) delay(500L * (i + 1))
+            }
+        }
+        throw IllegalStateException("فشلت ترجمة OpenAI بعد 3 محاولات.", last)
+    }
+
+    suspend fun testKey(): Boolean = try {
+        if (apiKey.isBlank()) false else http.newCall(Request.Builder().url("https://api.openai.com/v1/models/gpt-4o-mini").header("Authorization", "Bearer $apiKey").get().build()).execute().use { it.isSuccessful }
+    } catch (e: Exception) { Log.d(TAG, "OpenAI key test failed: ${e.message}"); false }
+
+    private fun contextText(context: TranslationContext): String = buildString {
+        if (context.previousTranslations.isNotEmpty()) {
+            append("السياق السابق للاختيار اللغوي فقط:\n")
+            context.previousTranslations.takeLast(6).forEach { append("SRC: ${it.source}\nTGT: ${it.translation}\n") }
+        }
+        if (context.glossary.isNotEmpty()) append("القاموس الإلزامي:\n${context.glossary.entries.joinToString("\n") { "${it.key} = ${it.value}" }}\n")
+        if (context.characterNotes.isNotBlank()) append("ملاحظات الأسماء/المتحدثين:\n${context.characterNotes}\n")
+    }
+
+    companion object {
+        private const val TAG = "SariOpenAI"
+        fun defaultClient() = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).callTimeout(35, TimeUnit.SECONDS).build()
+    }
+}
+
+
+====================================================================================================
+FILE: app/src/main/kotlin/com/sari/subtitle/TranslationClient.kt
+====================================================================================================
+package com.sari.subtitle
+
+import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.URLEncoder
+
+class TranslationClient(private val provider:TranslationProvider,private val apiKey:String,private val email:String="",private val http:OkHttpClient=WhisperClient.defaultClient()){
+    suspend fun translate(text:String,source:String,target:String):String=translateWithContext(text,source,target,TranslationContext(),TranslationQuality.BALANCED)
+    suspend fun translateWithContext(text:String,source:String,target:String,context:TranslationContext,quality:TranslationQuality=TranslationQuality.HUMAN):String=withContext(Dispatchers.IO){
+        require(text.isNotBlank()){ "لا يوجد نص لترجمته." }; require(target.isNotBlank()){ "حدد لغة الترجمة الهدف." }
+        if(provider==TranslationProvider.OPENAI) return@withContext OpenAiClient(apiKey,http).translate(text,source,target,context)
+        val request=when(provider){
+            TranslationProvider.GROQ->{require(apiKey.isNotBlank()){ "أدخل مفتاح Groq API في الإعدادات." }; val payload=JSONObject().put("model",if(quality==TranslationQuality.HUMAN)"openai/gpt-oss-120b" else "openai/gpt-oss-20b").put("temperature",0.0).put("messages",JSONArray().put(JSONObject().put("role","system").put("content",buildGroqPrompt(source,target,context))).put(JSONObject().put("role","user").put("content",text))).toString(); Request.Builder().url("https://api.groq.com/openai/v1/chat/completions").header("Authorization","Bearer $apiKey").post(payload.toRequestBody("application/json; charset=utf-8".toMediaType())).build()}
+            TranslationProvider.GOOGLE->{require(apiKey.isNotBlank()){ "مفتاح Google Cloud Translation غير موجود." }; val payload=JSONObject().put("q",text).put("target",target).apply{if(source!="auto")put("source",source)}.toString(); Request.Builder().url("https://translation.googleapis.com/language/translate/v2?key=${URLEncoder.encode(apiKey,"UTF-8")}").post(payload.toRequestBody("application/json; charset=utf-8".toMediaType())).build()}
+            TranslationProvider.MYMEMORY->{val s=if(source=="auto")"en" else source; val q=URLEncoder.encode(text,"UTF-8"); val pair=URLEncoder.encode("$s|$target","UTF-8"); val e=if(email.isBlank())"" else "&de="+URLEncoder.encode(email,"UTF-8"); Request.Builder().url("https://api.mymemory.translated.net/get?q=$q&langpair=$pair$e").get().build()}
+            TranslationProvider.OPENAI->error("unreachable")
+        }
+        execute(request)
+    }
+    private fun buildGroqPrompt(source:String,target:String,c:TranslationContext)=buildString{append("You are a professional human subtitle translator. Translate dialogue from ${if(source.isBlank()||source=="auto")"the detected source language" else source} to $target. Prioritize meaning, natural spoken dialogue, consistency, emotion and concise subtitle phrasing. Preserve names and terminology. Never invent facts. Return only the translation.\n"); appendContext(c)}
+    private fun appendContext(c:TranslationContext)=buildString{if(c.previousTranslations.isNotEmpty()){append("Recent dialogue:\n");c.previousTranslations.takeLast(6).forEach{append("SRC: ${it.source}\nTGT: ${it.translation}\n")}};if(c.glossary.isNotEmpty())append("Glossary:\n${c.glossary.entries.joinToString("\n"){ "${it.key} = ${it.value}"}}\n");if(c.characterNotes.isNotBlank())append("Speaker/name notes: ${c.characterNotes}\n")}
+    private suspend fun execute(request:Request):String{var last:Exception?=null;repeat(3){i->try{return http.newCall(request).execute().use{r->val raw=r.body?.string().orEmpty();if(!r.isSuccessful)error("HTTP ${r.code}: ${raw.take(180)}");val result=when(provider){TranslationProvider.GROQ->JSONObject(raw).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content").trim();TranslationProvider.GOOGLE->JSONObject(raw).getJSONObject("data").getJSONArray("translations").getJSONObject(0).getString("translatedText").trim();TranslationProvider.MYMEMORY->{val j=JSONObject(raw);if(j.optString("responseStatus")!="200")error(j.optString("responseDetails"));j.getJSONObject("responseData").getString("translatedText").trim()};TranslationProvider.OPENAI->""};if(result.isBlank())error("خدمة الترجمة أعادت نصاً فارغاً.");result}}catch(e:Exception){last=e;Log.d("SariTranslation","attempt ${i+1}: ${e.message}");if(i<2)delay(500L*(i+1))}};throw IllegalStateException("فشلت الترجمة بعد 3 محاولات.",last)}
+}
+data class TranslationContext(val previousSegments:List<String> = emptyList(),val previousTranslations:List<ContextTurn> = emptyList(),val glossary:Map<String,String> = emptyMap(),val characterNotes:String="")
+enum class TranslationProvider{GROQ,GOOGLE,MYMEMORY,OPENAI}
+enum class TranslationQuality{FAST,BALANCED,HUMAN}
+
+
+====================================================================================================
+FILE: app/src/main/kotlin/com/sari/subtitle/TranslationRepository.kt
+====================================================================================================
+package com.sari.subtitle
+
+import android.content.Context
+import android.content.Intent
+import android.os.SystemClock
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+
+class TranslationRepository(private val context:Context){
+    private val deduplicator=TranscriptDeduplicator()
+    private val memory by lazy{AppDatabase.get(context).translationMemoryDao()}
+    private val episodeContext by lazy{EpisodeContextStore(context)}
+
+    suspend fun translateAudio(audioFile:File,capturedAtElapsedMs:Long=SystemClock.elapsedRealtime(),durationMs:Long=AudioChunker.CHUNK_MS):TranslationEntity=withContext(Dispatchers.IO){
+        val settings=SettingsRepository(context).load()
+        val pre=if(settings.contextAwareTranslation)episodeContext.snapshot() else TranslationContext()
+        val prompt=buildPrompt(settings,pre)
+        val stt=createStt(settings)
+        val speechResult=stt.transcribe(audioFile,settings.speechLanguage,prompt)
+        if(!speechResult.success) throw IllegalStateException(speechResult.error ?: "فشل تحويل الصوت إلى نص.")
+        val speech=speechResult.text.trim()
+        val sourceLanguage=if(settings.sourceLanguage=="auto") speechResult.language ?: "auto" else settings.sourceLanguage
+        val target=settings.targetLanguage.ifBlank{"ar"}
+        if(speech.isBlank()||!deduplicator.shouldTranslate(speech)) return@withContext TranslationEntity(sourceText=speech,translatedText="",sourceLanguage=sourceLanguage,targetLanguage=target,createdAt=System.currentTimeMillis())
+        val hash=TextHash.sha256(speech)
+        val cached=if(settings.translationMemoryEnabled)memory.find(hash,sourceLanguage,target) else null
+        val context=if(settings.contextAwareTranslation)episodeContext.snapshot() else TranslationContext()
+        val translated=cached?.translatedText ?: run{
+            val quality=when(settings.translationQuality){0->TranslationQuality.FAST;1->TranslationQuality.BALANCED;else->TranslationQuality.HUMAN}
+            val provider=when(settings.provider){SettingsRepository.PROVIDER_GROQ->TranslationProvider.GROQ;SettingsRepository.PROVIDER_GOOGLE->TranslationProvider.GOOGLE;SettingsRepository.PROVIDER_OPENAI->TranslationProvider.OPENAI;else->TranslationProvider.MYMEMORY}
+            val key=when(provider){TranslationProvider.GROQ->settings.speechKey;TranslationProvider.OPENAI->settings.openAiKey;else->settings.translationKey}
+            val result=TranslationClient(provider,key,settings.myMemoryEmail).translateWithContext(speech,sourceLanguage,target,context,quality)
+            if(settings.translationMemoryEnabled){memory.insert(TranslationMemoryEntity(sourceHash=hash,sourceText=speech,translatedText=result,sourceLanguage=sourceLanguage,targetLanguage=target,createdAt=System.currentTimeMillis()));memory.trim()}
+            result
+        }
+        episodeContext.addTurn(speech,translated)
+        val startOffset=(speechResult.utterances.minOfOrNull{it.start}?.times(1000)?.toLong() ?: speechResult.words.minOfOrNull{it.start}?.times(1000)?.toLong() ?: 0L)
+        val endOffset=(speechResult.utterances.maxOfOrNull{it.end}?.times(1000)?.toLong() ?: speechResult.words.maxOfOrNull{it.end}?.times(1000)?.toLong() ?: durationMs.toDouble()).toLong()
+        val start=capturedAtElapsedMs+startOffset+settings.calibrationMs
+        val end=capturedAtElapsedMs+endOffset+settings.calibrationMs
+        val cueDuration=(end-start).coerceIn(900L,6000L)
+        LiveSubtitleBus.publish(speech,translated,start,cueDuration)
+        runCatching{context.startService(Intent(context,OverlayService::class.java).setAction(OverlayService.ACTION_UPDATE).putExtra(OverlayService.EXTRA_ORIGINAL,speech).putExtra(OverlayService.EXTRA_TRANSLATED,translated).putExtra(OverlayService.EXTRA_DURATION_MS,cueDuration))}
+        val entity=TranslationEntity(sourceText=speech,translatedText=translated,sourceLanguage=sourceLanguage,targetLanguage=target,createdAt=System.currentTimeMillis())
+        AppDatabase.get(context).translationDao().insert(entity)
+        entity
+    }
+
+    private fun createStt(settings:AppSettings):SttClient=when(settings.sttProvider){
+        SettingsRepository.STT_DEEPGRAM->DeepgramClient(settings.deepgramKey)
+        SettingsRepository.STT_VOSK->VoskClient(ModelDownloader(context).modelDirectory())
+        else->WhisperClient(settings.speechKey)
+    }
+    private fun buildPrompt(settings:AppSettings,c:TranslationContext)=buildString{if(settings.contextPrompt.isNotBlank())append(settings.contextPrompt).append("\n");if(c.glossary.isNotEmpty())append("Known terminology: ").append(c.glossary.entries.joinToString(", "){"${it.key}=${it.value}"}).append(". ");if(c.previousSegments.isNotEmpty())append("Recent dialogue for spelling/context: ").append(c.previousSegments.takeLast(4).joinToString(" | "))}.take(3000)
+    fun resetEpisodeContext()=episodeContext.clearSession()
+    suspend fun clearTranslationMemory()=withContext(Dispatchers.IO){memory.clear()}
+}
+
+
+====================================================================================================
+FILE: app/src/main/kotlin/com/sari/subtitle/OverlayService.kt
+====================================================================================================
+package com.sari.subtitle
+
+import android.app.Service
+import android.content.Intent
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.os.Build
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
+import android.view.animation.AlphaAnimation
+import android.widget.FrameLayout
+import android.widget.TextView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+
+class OverlayService:Service(){
+    private var wm:WindowManager?=null;private var panel:FrameLayout?=null;private var text:TextView?=null;private var params:WindowManager.LayoutParams?=null
+    private val handler=Handler(Looper.getMainLooper());private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate);private val hide=Runnable{fade(false)}
+    override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{try{when(intent?.action){ACTION_HIDE->{remove();stopSelf()};ACTION_UPDATE->{val t=intent.getStringExtra(EXTRA_TRANSLATED).orEmpty().trim();if(t.isNotBlank()){show();text?.text=t;applySettings();fade(true);handler.removeCallbacks(hide);handler.postDelayed(hide,intent.getLongExtra(EXTRA_DURATION_MS,2200L).coerceIn(900L,6000L))}}else->show()}}catch(e:Exception){android.util.Log.d("SariOverlay","${e.message}")};return START_NOT_STICKY}
+    private fun show(){if(panel!=null)return;wm=getSystemService(WINDOW_SERVICE) as WindowManager;val d=resources.displayMetrics.density;val root=FrameLayout(this);val tv=TextView(this).apply{textSize=20f;gravity=Gravity.CENTER;textAlignment=View.TEXT_ALIGNMENT_CENTER;textDirection=View.TEXT_DIRECTION_ANY_RTL;setTextColor(Color.WHITE);setTypeface(Typeface.create("sans-serif",Typeface.BOLD));maxLines=2;includeFontPadding=true;setShadowLayer(4f,0f,2f,Color.BLACK);setPadding((8*d).toInt(),2, (8*d).toInt(),2)};root.addView(tv,FrameLayout.LayoutParams((resources.displayMetrics.widthPixels*.92f).toInt(),WindowManager.LayoutParams.WRAP_CONTENT,Gravity.CENTER));root.setBackgroundColor(Color.TRANSPARENT);panel=root;text=tv
+        val type=if(Build.VERSION.SDK_INT>=26)WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+        params=WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT,type,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,PixelFormat.TRANSLUCENT).apply{gravity=Gravity.TOP or Gravity.CENTER_HORIZONTAL}
+        runCatching{wm?.addView(root,params)}.onFailure{panel=null;text=null}
+        applySettings()
+    }
+    private fun applySettings(){scope.launch{val s=runCatching{SettingsRepository(this@OverlayService).load()}.getOrDefault(AppSettings());text?.textSize=s.fontSize.toFloat().coerceIn(12f,48f);text?.alpha=(s.opacity/100f).coerceIn(.1f,1f);val lp=text?.layoutParams as? FrameLayout.LayoutParams?:return@launch;lp.gravity=when(s.subtitlePosition){SettingsRepository.POS_TOP->Gravity.TOP or Gravity.CENTER_HORIZONTAL;SettingsRepository.POS_CENTER->Gravity.CENTER;else->Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL};lp.bottomMargin=if(s.subtitlePosition==SettingsRepository.POS_BOTTOM)(80*resources.displayMetrics.density).toInt() else 0;lp.topMargin=if(s.subtitlePosition==SettingsRepository.POS_TOP)(48*resources.displayMetrics.density).toInt() else 0;text?.layoutParams=lp}}
+    private fun fade(show:Boolean){val v=panel?:return;if(show){v.visibility=View.VISIBLE;v.startAnimation(AlphaAnimation(0f,1f).apply{duration=180}}else v.startAnimation(AlphaAnimation(1f,0f).apply{duration=220;setAnimationListener(object:android.view.animation.Animation.AnimationListener{override fun onAnimationStart(a:android.view.animation.Animation?){ };override fun onAnimationRepeat(a:android.view.animation.Animation?){ };override fun onAnimationEnd(a:android.view.animation.Animation?){v.visibility=View.GONE}})} )}
+    private fun remove(){handler.removeCallbacksAndMessages(null);runCatching{panel?.let{wm?.removeView(it)}};panel=null;text=null}
+    override fun onDestroy(){remove();scope.cancel();super.onDestroy()};override fun onBind(intent:Intent?):IBinder?=null
+    companion object{const val ACTION_SHOW="com.sari.subtitle.SHOW_OVERLAY";const val ACTION_HIDE="com.sari.subtitle.HIDE_OVERLAY";const val ACTION_UPDATE="com.sari.subtitle.UPDATE_OVERLAY";const val EXTRA_ORIGINAL="original";const val EXTRA_TRANSLATED="translated";const val EXTRA_DURATION_MS="duration_ms"}
+}
+
+
+====================================================================================================
+FILE: app/src/main/kotlin/com/sari/subtitle/LiveSubtitleBus.kt
+====================================================================================================
+package com.sari.subtitle
+
+import android.os.SystemClock
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+data class LiveSubtitle(val id:Long,val original:String,val translated:String,val capturedAtElapsedMs:Long,val estimatedDurationMs:Long=2200L,val latencyMs:Long=0L,val videoPositionMs:Long?=null)
+object LiveSubtitleBus{
+    @Volatile private var latestCaptureStartMs=Long.MIN_VALUE
+    @Volatile private var videoSyncEnabled=false
+    @Volatile private var videoClockOffsetMs:Long=0L
+    private val _current=MutableStateFlow<LiveSubtitle?>(null);val current:StateFlow<LiveSubtitle?>=_current.asStateFlow()
+    fun markLatestCapture(startElapsedMs:Long){if(startElapsedMs>latestCaptureStartMs)latestCaptureStartMs=startElapsedMs}
+    fun setVideoSync(enabled:Boolean){videoSyncEnabled=enabled}
+    fun updatePlayerPosition(positionMs:Long){if(videoSyncEnabled)videoClockOffsetMs=positionMs-SystemClock.elapsedRealtime()}
+    fun publish(original:String,translated:String,capturedAtElapsedMs:Long=SystemClock.elapsedRealtime(),durationMs:Long=2200L){if(translated.isBlank())return;if(capturedAtElapsedMs+1000L<latestCaptureStartMs)return;val now=SystemClock.elapsedRealtime();_current.value=LiveSubtitle(SystemClock.elapsedRealtime(),original,translated,capturedAtElapsedMs,durationMs.coerceIn(900L,6000L),(now-capturedAtElapsedMs).coerceAtLeast(0L),if(videoSyncEnabled)capturedAtElapsedMs+videoClockOffsetMs else null)}
+    fun clear(){latestCaptureStartMs=Long.MIN_VALUE;_current.value=null}
+}
+
+
+====================================================================================================
+FILE: app/src/main/kotlin/com/sari/subtitle/VideoPlayerActivity.kt
+====================================================================================================
+package com.sari.subtitle
+
+import android.app.Activity
+import android.content.Intent
+import android.media.projection.MediaProjectionManager
+import android.net.Uri
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.widget.EditText
+import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import com.google.android.material.button.MaterialButton
+import kotlinx.coroutines.launch
+
+@OptIn(UnstableApi::class)
+class VideoPlayerActivity:AppCompatActivity(){
+    private var player:ExoPlayer?=null;private lateinit var urlInput:EditText;private lateinit var subtitleInput:EditText;private lateinit var drmLicenseInput:EditText;private lateinit var status:TextView;private lateinit var playerView:PlayerView
+    private val handler=Handler(Looper.getMainLooper());private var syncEnabled=true;private val sessionCues=mutableListOf<SubtitleCue>()
+    private val projectionLauncher=registerForActivityResult(ActivityResultContracts.StartActivityForResult()){result->try{if(result.resultCode==Activity.RESULT_OK&&result.data!=null){val i=Intent(this,AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_START).putExtra(AudioCaptureService.EXTRA_RESULT_CODE,result.resultCode).putExtra(AudioCaptureService.EXTRA_RESULT_DATA,result.data);ContextCompat.startForegroundService(this,i);ContextCompat.startForegroundService(this,Intent(this,OverlayService::class.java).setAction(OverlayService.ACTION_SHOW));status.text=getString(R.string.player_translation_running)}else status.text=getString(R.string.capture_permission_denied)}catch(e:Exception){status.text=e.message?:"error"}}}
+    override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContentView(R.layout.activity_video_player);urlInput=findViewById(R.id.videoUrlInput);subtitleInput=findViewById(R.id.subtitleUrlInput);drmLicenseInput=findViewById(R.id.drmLicenseUrlInput);status=findViewById(R.id.videoPlayerStatus);playerView=findViewById(R.id.videoPlayerView)
+        findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.playerBack).setNavigationOnClickListener{finish()};findViewById<MaterialButton>(R.id.playUrlButton).setOnClickListener{playOrRouteUrl()};findViewById<MaterialButton>(R.id.loadSubtitleButton).setOnClickListener{playOrRouteUrl()};findViewById<MaterialButton>(R.id.startPlayerTranslationButton).setOnClickListener{requestTranslation()};findViewById<MaterialButton>(R.id.openSourceButton).setOnClickListener{openSource()};findViewById<MaterialButton>(R.id.syncVideoButton).setOnClickListener{syncEnabled=!syncEnabled;LiveSubtitleBus.setVideoSync(syncEnabled);status.text=if(syncEnabled)getString(R.string.sync_enabled) else getString(R.string.sync_disabled)};findViewById<MaterialButton>(R.id.calibrateButton).setOnClickListener{calibrate()};findViewById<MaterialButton>(R.id.exportSrtButton).setOnClickListener{exportSrt()}
+        urlInput.setText(intent.getStringExtra(EXTRA_URL).orEmpty());createPlayer();LiveSubtitleBus.setVideoSync(true)
+        lifecycleScope.launch{LiveSubtitleBus.current.collect{item->val view=findViewById<TextView>(R.id.liveSubtitleText);handler.removeCallbacksAndMessages(null);if(item==null||item.translated.isBlank()){view.visibility=android.view.View.GONE}else{if(syncEnabled&&item.videoPositionMs!=null){val now=player?.currentPosition?:0L;val delta=item.videoPositionMs-now; if(kotlin.math.abs(delta)>1200L){view.visibility=android.view.View.GONE;handler.postDelayed({if(syncEnabled){view.text=item.translated;view.visibility=android.view.View.VISIBLE}},delta.coerceAtLeast(0L))}else{view.text=item.translated;view.visibility=android.view.View.VISIBLE}}else{view.text=item.translated;view.visibility=android.view.View.VISIBLE};sessionCues.add(SubtitleCue(item.original,item.translated,item.videoPositionMs ?: item.capturedAtElapsedMs,(item.videoPositionMs ?: item.capturedAtElapsedMs)+item.estimatedDurationMs));status.text="Live subtitle • ${item.latencyMs} ms";handler.postDelayed({view.visibility=android.view.View.GONE},item.estimatedDurationMs.coerceAtLeast(900L))}}}
+        handler.post(object:Runnable{override fun run(){player?.let{if(syncEnabled)LiveSubtitleBus.updatePlayerPosition(it.currentPosition)};handler.postDelayed(this,100L)}})
+        if(urlInput.text.isNotBlank())playOrRouteUrl()
+    }
+    private fun createPlayer(){player=ExoPlayer.Builder(this).build().also{exo->playerView.player=exo;exo.addListener(object:Player.Listener{override fun onPlaybackStateChanged(state:Int){if(state==Player.STATE_READY){LiveSubtitleBus.updatePlayerPosition(exo.currentPosition);status.text=getString(R.string.player_ready)}}override fun onPositionDiscontinuity(reason:Player.PositionInfo,oldPosition:Player.PositionInfo){LiveSubtitleBus.updatePlayerPosition(exo.currentPosition)}})}}
+    private fun playOrRouteUrl(){try{val raw=urlInput.text.toString().trim();val resolved=VideoPlatformResolver.resolve(raw)?:run{urlInput.error=getString(R.string.player_invalid_url);return};if(!resolved.isDirectMedia){status.text=getString(R.string.player_platform_page,VideoPlatformResolver.displayName(resolved.platform));startActivity(Intent(this,BrowserActivity::class.java).putExtra(BrowserActivity.EXTRA_URL,resolved.uri.toString()));return};val b=MediaItem.Builder().setUri(resolved.uri).setMimeType(VideoPlatformResolver.mimeTypeFor(resolved));subtitleConfiguration()?.let{b.setSubtitleConfigurations(listOf(it))};drmLicenseUriOrNull()?.let{b.setDrmConfiguration(MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID).setLicenseUri(it).setMultiSession(false).build());status.text=getString(R.string.player_drm_configured)};player?.setMediaItem(b.build());player?.prepare();player?.playWhenReady=true;if(drmLicenseInput.text.isNullOrBlank())status.text=getString(R.string.player_loading)}catch(e:Exception){status.text=getString(R.string.player_error,e.message?:"unknown")}}
+    private fun subtitleConfiguration():MediaItem.SubtitleConfiguration?{val raw=subtitleInput.text.toString().trim();if(raw.isBlank())return null;val uri=VideoPlatformResolver.resolve(raw)?.uri?:return null;val ext=uri.path.orEmpty().substringAfterLast('.',"").lowercase();val mime=when(ext){"vtt"->MimeTypes.TEXT_VTT;"srt"->MimeTypes.APPLICATION_SUBRIP;else->return null};return MediaItem.SubtitleConfiguration.Builder(uri).setMimeType(mime).setLanguage("ar").setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()}
+    private fun drmLicenseUriOrNull():Uri?{val raw=drmLicenseInput.text.toString().trim();if(raw.isBlank())return null;val uri=runCatching{Uri.parse(raw)}.getOrNull();if(uri?.scheme?.lowercase()!="https"||uri.host.isNullOrBlank()){drmLicenseInput.error=getString(R.string.player_drm_https_required);return null};return uri}
+    private fun requestTranslation(){if(player?.currentMediaItem==null){Toast.makeText(this,R.string.player_load_first,Toast.LENGTH_LONG).show();return};val manager=getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager;projectionLauncher.launch(manager.createScreenCaptureIntent())}
+    private fun calibrate(){try{val options=arrayOf("-1.5 s","-1.0 s","-0.5 s","0 s","+0.5 s","+1.0 s","+1.5 s");com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle(R.string.calibrate_title).setItems(options){_,which->val ms=(-1500L+which*500L);lifecycleScope.launch{val s=SettingsRepository(this@VideoPlayerActivity).load();SettingsRepository(this@VideoPlayerActivity).save(s.provider,s.speechKey,s.translationKey,s.sourceLanguage,s.targetLanguage,s.fontSize,s.opacity,s.myMemoryEmail,s.speechLanguage,s.contextAwareTranslation,s.translationMemoryEnabled,s.glossary,s.translationQuality,s.sttProvider,s.deepgramKey,s.openAiKey,s.contextPrompt,s.subtitlePosition,ms);status.text=getString(R.string.calibration_set,options[which])}}.show()}catch(e:Exception){status.text=e.message?:"error"}}
+    private fun exportSrt(){lifecycleScope.launch{try{val path=SrtExporter.export(this@VideoPlayerActivity,sessionCues.distinctBy{it.startElapsedMs}) ;Toast.makeText(this@VideoPlayerActivity,if(path!=null)getString(R.string.srt_exported) else getString(R.string.srt_export_failed),Toast.LENGTH_LONG).show()}catch(e:Exception){Toast.makeText(this@VideoPlayerActivity,e.message?:getString(R.string.srt_export_failed),Toast.LENGTH_LONG).show()}}}
+    private fun openSource(){val raw=urlInput.text.toString().trim();if(VideoPlatformResolver.resolve(raw)!=null)startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(raw)))}
+    override fun onDestroy(){handler.removeCallbacksAndMessages(null);runCatching{ContextCompat.startService(this,Intent(this,AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))};runCatching{exportSrt()};playerView.player=null;player?.release();player=null;super.onDestroy()}
+    companion object{const val EXTRA_URL="video_url"}
+}
+
+
+====================================================================================================
+FILE: app/src/main/kotlin/com/sari/subtitle/SettingsActivity.kt
+====================================================================================================
+package com.sari.subtitle
+
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import android.text.InputType
+import android.widget.ArrayAdapter
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.slider.Slider
+import com.google.android.material.textfield.MaterialAutoCompleteTextView
+import com.google.android.material.textfield.TextInputEditText
+import kotlinx.coroutines.launch
+
+class SettingsActivity:AppCompatActivity(){
+    private lateinit var provider:MaterialAutoCompleteTextView;private lateinit var sttProvider:MaterialAutoCompleteTextView;private lateinit var speechKey:TextInputEditText;private lateinit var deepgramKey:TextInputEditText;private lateinit var openAiKey:TextInputEditText;private lateinit var translationKey:TextInputEditText;private lateinit var sourceLang:TextInputEditText;private lateinit var targetLang:TextInputEditText;private lateinit var speechLang:TextInputEditText;private lateinit var email:TextInputEditText;private lateinit var contextPrompt:TextInputEditText;private lateinit var fontSize:Slider;private lateinit var opacity:Slider;private lateinit var fontValue:TextView;private lateinit var opacityValue:TextView;private lateinit var position:MaterialAutoCompleteTextView;private lateinit var contextAwareSwitch:MaterialSwitch;private lateinit var translationMemorySwitch:MaterialSwitch;private lateinit var glossary:TextInputEditText;private lateinit var quality:MaterialAutoCompleteTextView
+    private val sttNames=listOf("Groq Whisper","Deepgram Nova-2","Vosk offline");private val translationNames=listOf("Groq","Google Cloud Translation","MyMemory","OpenAI GPT-4o-mini");private val qualityNames=listOf("سريع — Fast","متوازن — Balanced","بجودة بشرية — Human Quality");private val positions=listOf("أعلى — Top","وسط — Center","أسفل — Bottom")
+    override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContentView(R.layout.activity_settings);try{findViewById<MaterialToolbar>(R.id.settingsToolbar).apply{setNavigationOnClickListener{finish()};setOnMenuItemClickListener{if(it.itemId==R.id.action_save){saveSettings();true}else false}};provider=findViewById(R.id.providerSpinner);sttProvider=findViewById(R.id.sttProviderSpinner);speechKey=findViewById(R.id.speechKeyInput);deepgramKey=findViewById(R.id.deepgramKeyInput);openAiKey=findViewById(R.id.openAiKeyInput);translationKey=findViewById(R.id.translationKeyInput);sourceLang=findViewById(R.id.sourceLanguageInput);targetLang=findViewById(R.id.targetLanguageInput);speechLang=findViewById(R.id.speechLanguageInput);email=findViewById(R.id.emailInput);contextPrompt=findViewById(R.id.contextPromptInput);fontSize=findViewById(R.id.fontSizeSeek);opacity=findViewById(R.id.opacitySeek);fontValue=findViewById(R.id.fontSizeValue);opacityValue=findViewById(R.id.opacityValue);position=findViewById(R.id.positionSpinner);contextAwareSwitch=findViewById(R.id.contextAwareSwitch);translationMemorySwitch=findViewById(R.id.translationMemorySwitch);glossary=findViewById(R.id.glossaryInput);quality=findViewById(R.id.qualitySpinner)
+            setup(provider,translationNames);setup(sttProvider,sttNames);setup(quality,qualityNames);setup(position,positions);fontSize.valueFrom=12f;fontSize.valueTo=48f;fontSize.stepSize=1f;opacity.valueFrom=0f;opacity.valueTo=100f;opacity.stepSize=1f;fontSize.addOnChangeListener{_,v,_->fontValue.text="${v.toInt()} sp"};opacity.addOnChangeListener{_,v,_->opacityValue.text="${v.toInt()}%"}
+            findViewById<MaterialButton>(R.id.getGroqKeyButton).setOnClickListener{open("https://console.groq.com/keys")};findViewById<MaterialButton>(R.id.getDeepgramKeyButton).setOnClickListener{open("https://console.deepgram.com")};findViewById<MaterialButton>(R.id.testDeepgramButton).setOnClickListener{testDeepgram()};findViewById<MaterialButton>(R.id.testOpenAiButton).setOnClickListener{testOpenAi()};findViewById<MaterialButton>(R.id.getOpenAiKeyButton).setOnClickListener{open("https://platform.openai.com/api-keys")};findViewById<MaterialButton>(R.id.downloadVoskButton).setOnClickListener{downloadVosk()};findViewById<MaterialButton>(R.id.saveSettingsButton).setOnClickListener{saveSettings()}
+            lifecycleScope.launch{val s=SettingsRepository(this@SettingsActivity).load();provider.setText(translationNames[s.provider.coerceIn(0,3)],false);sttProvider.setText(sttNames[s.sttProvider.coerceIn(0,2)],false);speechKey.setText(s.speechKey);deepgramKey.setText(s.deepgramKey);openAiKey.setText(s.openAiKey);translationKey.setText(s.translationKey);sourceLang.setText(s.sourceLanguage);targetLang.setText(s.targetLanguage);speechLang.setText(s.speechLanguage);email.setText(s.myMemoryEmail);contextPrompt.setText(s.contextPrompt);fontSize.value=s.fontSize.toFloat();opacity.value=s.opacity.toFloat();fontValue.text="${s.fontSize} sp";opacityValue.text="${s.opacity}%";position.setText(positions[s.subtitlePosition.coerceIn(0,2)],false);contextAwareSwitch.isChecked=s.contextAwareTranslation;translationMemorySwitch.isChecked=s.translationMemoryEnabled;glossary.setText(s.glossary);quality.setText(qualityNames[s.translationQuality.coerceIn(0,2)],false)}}catch(e:Exception){Toast.makeText(this,e.message?:"تعذر فتح الإعدادات",Toast.LENGTH_LONG).show()}}
+    private fun setup(v:MaterialAutoCompleteTextView,items:List<String>){v.setAdapter(ArrayAdapter(this,android.R.layout.simple_dropdown_item_1line,items));v.setOnClickListener{v.showDropDown()};v.inputType=InputType.TYPE_NULL}
+    private fun open(url:String){runCatching{startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))}}
+    private fun testDeepgram(){lifecycleScope.launch{val ok=DeepgramClient(deepgramKey.text?.toString()?.trim().orEmpty()).testKey();Toast.makeText(this@SettingsActivity,if(ok)getString(R.string.key_valid) else getString(R.string.key_invalid),Toast.LENGTH_LONG).show()}}
+    private fun testOpenAi(){lifecycleScope.launch{val ok=OpenAiClient(openAiKey.text?.toString()?.trim().orEmpty()).testKey();Toast.makeText(this@SettingsActivity,if(ok)getString(R.string.key_valid) else getString(R.string.key_invalid),Toast.LENGTH_LONG).show()}}
+    private fun downloadVosk(){lifecycleScope.launch{try{findViewById<MaterialButton>(R.id.downloadVoskButton).isEnabled=false;ModelDownloader(this@SettingsActivity).downloadArabic{};Toast.makeText(this@SettingsActivity,R.string.vosk_ready,Toast.LENGTH_LONG).show()}catch(e:Exception){Toast.makeText(this@SettingsActivity,e.message?:getString(R.string.vosk_failed),Toast.LENGTH_LONG).show()}finally{findViewById<MaterialButton>(R.id.downloadVoskButton).isEnabled=true}}}
+    private fun saveSettings(){lifecycleScope.launch{try{val s=SettingsRepository(this@SettingsActivity).load();SettingsRepository(this@SettingsActivity).save(provider=translationNames.indexOf(provider.text.toString()).coerceAtLeast(0),speechKey=speechKey.text?.toString()?.trim().orEmpty(),translationKey=translationKey.text?.toString()?.trim().orEmpty(),source=sourceLang.text?.toString()?.trim().orEmpty().ifBlank{"auto"},target=targetLang.text?.toString()?.trim().orEmpty().ifBlank{"ar"},font=fontSize.value.toInt(),opacity=opacity.value.toInt(),email=email.text?.toString()?.trim().orEmpty(),speechLanguage=speechLang.text?.toString()?.trim().orEmpty().ifBlank{"auto"},contextAwareTranslation=contextAwareSwitch.isChecked,translationMemoryEnabled=translationMemorySwitch.isChecked,glossary=glossary.text?.toString().orEmpty(),translationQuality=qualityNames.indexOf(quality.text.toString()).coerceIn(0,2),sttProvider=sttNames.indexOf(sttProvider.text.toString()).coerceIn(0,2),deepgramKey=deepgramKey.text?.toString()?.trim().orEmpty(),openAiKey=openAiKey.text?.toString()?.trim().orEmpty(),contextPrompt=contextPrompt.text?.toString().orEmpty(),subtitlePosition=positions.indexOf(position.text.toString()).coerceIn(0,2),calibrationMs=s.calibrationMs);Toast.makeText(this@SettingsActivity,R.string.settings_saved,Toast.LENGTH_SHORT).show();finish()}catch(e:Exception){Toast.makeText(this@SettingsActivity,e.message?:getString(R.string.settings_save_failed),Toast.LENGTH_LONG).show()}}}
+}
+
+
+====================================================================================================
+FILE: app/src/main/kotlin/com/sari/subtitle/SrtExporter.kt
+====================================================================================================
+package com.sari.subtitle
+
+import android.content.ContentValues
+import android.content.Context
+import android.os.Environment
+import android.provider.MediaStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+object SrtExporter {
+    suspend fun export(context: Context, cues: List<SubtitleCue>): String? = withContext(Dispatchers.IO) {
+        if (cues.isEmpty()) return@withContext null
+        val name="SariSubtitle_"+SimpleDateFormat("yyyyMMdd_HHmmss",Locale.US).format(Date())+".srt"
+        val content=cues.mapIndexed { i,c -> "${i+1}\n${format(c.startElapsedMs)} --> ${format(c.endElapsedMs)}\n${c.translated.trim()}\n" }.joinToString("\n")
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            val values=ContentValues().apply { put(MediaStore.Downloads.DISPLAY_NAME,name); put(MediaStore.Downloads.MIME_TYPE,"application/x-subrip"); put(MediaStore.Downloads.RELATIVE_PATH,Environment.DIRECTORY_DOWNLOADS+"/SariSubtitle/") }
+            val uri=context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,values) ?: return@withContext null
+            context.contentResolver.openOutputStream(uri)?.use{it.write(content.toByteArray(Charsets.UTF_8))} ?: return@withContext null
+            uri.toString()
+        } else null
+    }
+    private fun format(ms:Long):String { val x=ms.coerceAtLeast(0); return String.format(Locale.US,"%02d:%02d:%02d,%03d",x/3600000,(x/60000)%60,(x/1000)%60,x%1000) }
+}
+
+
+====================================================================================================
+FILE: app/src/main/kotlin/com/sari/subtitle/SplashActivity.kt
+====================================================================================================
+package com.sari.subtitle
+
+import android.content.Intent
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import androidx.appcompat.app.AppCompatActivity
+
+class SplashActivity:AppCompatActivity(){
+    override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContentView(R.layout.activity_splash);Handler(Looper.getMainLooper()).postDelayed({runCatching{startActivity(Intent(this,MainActivity::class.java));finish()}},1500L)}
+}
+
+
+====================================================================================================
+FILE: app/src/main/res/layout/activity_settings.xml
+====================================================================================================
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="@color/background" android:layoutDirection="locale">
+<com.google.android.material.appbar.MaterialToolbar android:id="@+id/settingsToolbar" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/background" app:title="@string/settings_title" app:titleTextColor="@color/text_primary" app:navigationIcon="@drawable/ic_arrow_back" app:menu="@menu/settings_toolbar"/>
+<ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:fillViewport="true"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp">
+<com.google.android.material.card.MaterialCardView android:layout_width="match_parent" android:layout_height="wrap_content" app:cardCornerRadius="20dp" app:cardBackgroundColor="@color/surface"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp">
+<TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/stt_section" android:textColor="@color/text_primary" android:textSize="19sp" android:textStyle="bold"/>
+<com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" app:boxBackgroundMode="outline" app:endIconMode="dropdown_menu"><com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/sttProviderSpinner" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/stt_provider"/></com.google.android.material.textfield.TextInputLayout>
+<com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:hint="@string/groq_key" app:boxBackgroundMode="outline" app:endIconMode="password_toggle"><com.google.android.material.textfield.TextInputEditText android:id="@+id/speechKeyInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textPassword" android:singleLine="true"/></com.google.android.material.textfield.TextInputLayout>
+<com.google.android.material.button.MaterialButton android:id="@+id/getGroqKeyButton" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/get_groq_key"/>
+<com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:hint="@string/deepgram_api_key" app:boxBackgroundMode="outline" app:endIconMode="password_toggle"><com.google.android.material.textfield.TextInputEditText android:id="@+id/deepgramKeyInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textPassword" android:singleLine="true"/></com.google.android.material.textfield.TextInputLayout>
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal"><com.google.android.material.button.MaterialButton android:id="@+id/testDeepgramButton" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/deepgram_test"/><com.google.android.material.button.MaterialButton android:id="@+id/getDeepgramKeyButton" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/deepgram_get_key"/></LinearLayout>
+<com.google.android.material.button.MaterialButton android:id="@+id/downloadVoskButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/vosk_download"/>
+</LinearLayout></com.google.android.material.card.MaterialCardView>
+<com.google.android.material.card.MaterialCardView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" app:cardCornerRadius="20dp" app:cardBackgroundColor="@color/surface"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp">
+<TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/translation_section" android:textColor="@color/text_primary" android:textSize="19sp" android:textStyle="bold"/>
+<com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" app:boxBackgroundMode="outline" app:endIconMode="dropdown_menu"><com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/providerSpinner" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/provider"/></com.google.android.material.textfield.TextInputLayout>
+<com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:hint="@string/translation_key" app:boxBackgroundMode="outline" app:endIconMode="password_toggle"><com.google.android.material.textfield.TextInputEditText android:id="@+id/translationKeyInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textPassword"/></com.google.android.material.textfield.TextInputLayout>
+<com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:hint="@string/openai_api_key" app:boxBackgroundMode="outline" app:endIconMode="password_toggle"><com.google.android.material.textfield.TextInputEditText android:id="@+id/openAiKeyInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textPassword"/></com.google.android.material.textfield.TextInputLayout>
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal"><com.google.android.material.button.MaterialButton android:id="@+id/testOpenAiButton" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/openai_test"/><com.google.android.material.button.MaterialButton android:id="@+id/getOpenAiKeyButton" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/openai_get_key"/></LinearLayout>
+<com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:hint="@string/mymemory_email" app:boxBackgroundMode="outline"><com.google.android.material.textfield.TextInputEditText android:id="@+id/emailInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textEmailAddress"/></com.google.android.material.textfield.TextInputLayout>
+</LinearLayout></com.google.android.material.card.MaterialCardView>
+<com.google.android.material.card.MaterialCardView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" app:cardCornerRadius="20dp" app:cardBackgroundColor="@color/surface"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp">
+<TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/languages" android:textColor="@color/text_primary" android:textSize="19sp" android:textStyle="bold"/>
+<com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:hint="@string/speech_language" app:boxBackgroundMode="outline"><com.google.android.material.textfield.TextInputEditText android:id="@+id/speechLanguageInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="auto"/></com.google.android.material.textfield.TextInputLayout>
+<com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:hint="@string/source_language" app:boxBackgroundMode="outline"><com.google.android.material.textfield.TextInputEditText android:id="@+id/sourceLanguageInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="auto"/></com.google.android.material.textfield.TextInputLayout>
+<com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:hint="@string/target_language" app:boxBackgroundMode="outline"><com.google.android.material.textfield.TextInputEditText android:id="@+id/targetLanguageInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="ar"/></com.google.android.material.textfield.TextInputLayout>
+</LinearLayout></com.google.android.material.card.MaterialCardView>
+<com.google.android.material.card.MaterialCardView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" app:cardCornerRadius="20dp" app:cardBackgroundColor="@color/surface"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp">
+<TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/context_prompt_title" android:textColor="@color/text_primary" android:textSize="19sp" android:textStyle="bold"/><TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:text="@string/context_prompt_description" android:textColor="@color/text_secondary"/>
+<com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" app:boxBackgroundMode="outline"><com.google.android.material.textfield.TextInputEditText android:id="@+id/contextPromptInput" android:layout_width="match_parent" android:layout_height="130dp" android:gravity="top|start" android:inputType="textMultiLine" android:hint="@string/context_prompt_example"/></com.google.android.material.textfield.TextInputLayout>
+<com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:hint="@string/glossary_hint" app:boxBackgroundMode="outline"><com.google.android.material.textfield.TextInputEditText android:id="@+id/glossaryInput" android:layout_width="match_parent" android:layout_height="120dp" android:gravity="top|start" android:inputType="textMultiLine" android:hint="@string/glossary_example"/></com.google.android.material.textfield.TextInputLayout>
+<com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/contextAwareSwitch" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/context_aware_translation"/><com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/translationMemorySwitch" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/translation_memory"/>
+</LinearLayout></com.google.android.material.card.MaterialCardView>
+<com.google.android.material.card.MaterialCardView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" app:cardCornerRadius="20dp" app:cardBackgroundColor="@color/surface"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp">
+<TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/translation_quality_title" android:textColor="@color/text_primary" android:textSize="19sp" android:textStyle="bold"/><com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" app:boxBackgroundMode="outline" app:endIconMode="dropdown_menu"><com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/qualitySpinner" android:layout_width="match_parent" android:layout_height="wrap_content"/></com.google.android.material.textfield.TextInputLayout>
+</LinearLayout></com.google.android.material.card.MaterialCardView>
+<com.google.android.material.card.MaterialCardView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" app:cardCornerRadius="20dp" app:cardBackgroundColor="@color/surface"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp">
+<TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/appearance" android:textColor="@color/text_primary" android:textSize="19sp" android:textStyle="bold"/><TextView android:id="@+id/fontSizeValue" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="30 sp" android:textColor="@color/text_primary" android:layout_marginTop="10dp"/><com.google.android.material.slider.Slider android:id="@+id/fontSizeSeek" android:layout_width="match_parent" android:layout_height="wrap_content" android:valueFrom="12" android:valueTo="48" android:stepSize="1"/><TextView android:id="@+id/opacityValue" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="82%" android:textColor="@color/text_primary"/><com.google.android.material.slider.Slider android:id="@+id/opacitySeek" android:layout_width="match_parent" android:layout_height="wrap_content" android:valueFrom="0" android:valueTo="100" android:stepSize="1"/><com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" app:boxBackgroundMode="outline" app:endIconMode="dropdown_menu"><com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/positionSpinner" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/subtitle_position"/></com.google.android.material.textfield.TextInputLayout>
+</LinearLayout></com.google.android.material.card.MaterialCardView>
+<com.google.android.material.button.MaterialButton android:id="@+id/saveSettingsButton" android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="18dp" android:layout_marginBottom="24dp" android:text="@string/save_settings" app:icon="@drawable/ic_check"/>
+</LinearLayout></ScrollView></LinearLayout>
+
+
+====================================================================================================
+FILE: app/src/main/res/layout/activity_video_player.xml
+====================================================================================================
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="@color/background">
+<com.google.android.material.appbar.MaterialToolbar android:id="@+id/playerBack" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/background" app:title="@string/player_title" app:titleTextColor="@color/text_primary" app:navigationIcon="@drawable/ic_arrow_back"/>
+<EditText android:id="@+id/videoUrlInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_margin="12dp" android:singleLine="true" android:inputType="textUri" android:hint="https://example.com/video.mp4"/>
+<com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginHorizontal="12dp" app:boxBackgroundMode="outline"><com.google.android.material.textfield.TextInputEditText android:id="@+id/subtitleUrlInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:singleLine="true" android:hint="@string/player_subtitle_url"/></com.google.android.material.textfield.TextInputLayout>
+<com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_margin="12dp" app:boxBackgroundMode="outline"><com.google.android.material.textfield.TextInputEditText android:id="@+id/drmLicenseUrlInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:singleLine="true" android:hint="@string/player_drm_license_url"/></com.google.android.material.textfield.TextInputLayout>
+<com.google.android.material.button.MaterialButton android:id="@+id/playUrlButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginHorizontal="12dp" android:text="@string/player_play_url"/>
+<FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"><androidx.media3.ui.PlayerView android:id="@+id/videoPlayerView" android:layout_width="match_parent" android:layout_height="match_parent" app:use_controller="true" app:show_buffering="when_playing"/><TextView android:id="@+id/liveSubtitleText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_gravity="bottom" android:layout_marginHorizontal="20dp" android:layout_marginBottom="30dp" android:gravity="center" android:textAlignment="center" android:textDirection="anyRtl" android:textColor="@android:color/white" android:textSize="20sp" android:textStyle="bold" android:maxLines="2" android:shadowColor="#FF000000" android:shadowDx="0" android:shadowDy="2" android:shadowRadius="4" android:background="@android:color/transparent" android:visibility="gone"/></FrameLayout>
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:padding="8dp"><com.google.android.material.button.MaterialButton android:id="@+id/loadSubtitleButton" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/player_load_subtitle"/><com.google.android.material.button.MaterialButton android:id="@+id/openSourceButton" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/player_open_source"/></LinearLayout>
+<com.google.android.material.button.MaterialButton android:id="@+id/startPlayerTranslationButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginHorizontal="12dp" android:text="@string/player_start_translation"/>
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingHorizontal="12dp"><com.google.android.material.button.MaterialButton android:id="@+id/syncVideoButton" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/sync_video"/><com.google.android.material.button.MaterialButton android:id="@+id/calibrateButton" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/calibrate"/><com.google.android.material.button.MaterialButton android:id="@+id/exportSrtButton" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/export_srt"/></LinearLayout>
+<TextView android:id="@+id/videoPlayerStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="10dp" android:gravity="center" android:text="@string/player_idle" android:textColor="@color/text_secondary"/>
+</LinearLayout>
+
+
+====================================================================================================
+FILE: app/src/main/res/layout/activity_splash.xml
+====================================================================================================
+<?xml version="1.0" encoding="utf-8"?><FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/background"><LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="center" android:orientation="vertical" android:gravity="center"><ImageView android:layout_width="96dp" android:layout_height="96dp" android:src="@drawable/icon_tile" android:contentDescription="@string/app_name"/><TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="@string/app_name" android:textColor="@color/text_primary" android:textSize="28sp" android:textStyle="bold"/><TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="@string/splash_subtitle" android:textColor="@color/text_secondary" android:textSize="14sp"/></LinearLayout></FrameLayout>
+
+
+====================================================================================================
+FILE: app/src/main/res/values/themes.xml
+====================================================================================================
+<resources>
+<style name="Theme.SariSubtitle" parent="Theme.Material3.DayNight.NoActionBar"><item name="colorPrimary">@color/primary</item><item name="colorOnPrimary">@color/text_primary</item><item name="colorSecondary">@color/accent</item><item name="colorOnSecondary">@color/background</item><item name="colorSurface">@color/surface</item><item name="colorOnSurface">@color/text_primary</item><item name="colorSurfaceVariant">@color/surface_variant</item><item name="colorError">@color/error</item><item name="android:colorBackground">@color/background</item><item name="android:statusBarColor">@color/background</item><item name="android:navigationBarColor">@color/background</item><item name="android:fontFamily">sans</item><item name="materialCardViewStyle">@style/Widget.Sari.Card</item></style>
+<style name="Theme.SariSubtitle.Splash" parent="Theme.Material3.DayNight.NoActionBar"><item name="android:windowSplashScreenBackground">@color/background</item><item name="android:colorBackground">@color/background</item><item name="android:fontFamily">sans</item></style>
+<style name="Widget.Sari.Card" parent="Widget.Material3.CardView.Filled"><item name="cardCornerRadius">20dp</item><item name="cardElevation">2dp</item><item name="cardBackgroundColor">@color/surface</item><item name="strokeColor">@color/outline</item><item name="strokeWidth">1dp</item></style>
+</resources>
+
+
+====================================================================================================
+FILE: app/src/main/res/values/strings.xml
+====================================================================================================
+<resources>
+<string name="app_name">Sari Subtitle</string><string name="settings">الإعدادات</string><string name="start_overlay">إظهار الترجمة العائمة</string><string name="stop_overlay">إخفاء الترجمة العائمة</string>
+<string name="home">الرئيسية</string><string name="home_hero_title">ترجمة الصوت لحظياً</string><string name="original_text_label">النص الأصلي</string><string name="translated_text_label">الترجمة</string><string name="history">السجل</string><string name="capture_status">حالة الالتقاط</string><string name="capture_active">التقاط الصوت نشط</string><string name="capture_stopped">التقاط الصوت متوقف</string><string name="last_translation">آخر ترجمة</string><string name="no_translation_yet">ستظهر أحدث ترجمة هنا عند بدء الالتقاط.</string><string name="overlay_card_title">الترجمة العائمة</string><string name="overlay_card_subtitle">إظهار أو إخفاء النص فوق التطبيقات الأخرى</string><string name="start_capture">بدء التقاط الصوت</string><string name="stop_capture">إيقاف التقاط الصوت</string><string name="capture_permission_denied">لم تتم الموافقة على التقاط صوت الجهاز.</string><string name="permissions_required">يلزم منح أذونات الميكروفون والإشعارات.</string><string name="overlay_permission_required">اسمح بعرض النوافذ فوق التطبيقات أولاً.</string>
+<string name="settings_title">الإعدادات</string><string name="api_keys">مفاتيح API</string><string name="languages">اللغات</string><string name="appearance">المظهر</string><string name="about">حول التطبيق</string><string name="provider">مزوّد الترجمة</string><string name="groq_key">Groq API Key</string><string name="translation_key">Translation API Key (اختياري)</string><string name="mymemory_email">MyMemory Email (اختياري)</string><string name="speech_language">لغة التعرّف على الصوت</string><string name="source_language">لغة النص الأصلي</string><string name="target_language">لغة الترجمة</string><string name="font_size">حجم خط الترجمة</string><string name="overlay_opacity">شفافية نافذة الترجمة</string><string name="get_groq_key">الحصول على مفتاح Groq</string><string name="save_settings">حفظ الإعدادات</string><string name="settings_saved">تم حفظ الإعدادات</string><string name="settings_save_failed">تعذر حفظ الإعدادات</string>
+<string name="history_title">سجل الترجمات</string><string name="empty_history">لا توجد ترجمات بعد</string><string name="clear_history">مسح السجل</string><string name="clear_history_confirm">هل تريد حذف جميع الترجمات المحفوظة؟</string><string name="cancel">إلغاء</string><string name="delete">حذف</string><string name="history_cleared">تم مسح السجل</string><string name="just_now">الآن</string><string name="minutes_ago">منذ %1$d دقيقة</string><string name="hours_ago">منذ %1$d ساعة</string><string name="days_ago">منذ %1$d يوم</string><string name="delete_translation">حذف الترجمة</string>
+<string name="waiting_for_audio">بانتظار الصوت…</string>
+<string name="open_video_player">مشاهدة فيديو من رابط وترجمته</string>
+<string name="player_title">مشغل Sari Subtitle</string>
+<string name="player_url_hint">أدخل رابط فيديو مباشر يدعم البث عبر HTTP/HTTPS. لا تدعم هذه الشاشة صفحات YouTube أو المواقع المحمية مباشرة.</string>
+<string name="player_play_url">تشغيل الرابط</string>
+<string name="player_start_translation">بدء التقاط الصوت والترجمة</string>
+<string name="player_idle">أدخل رابط فيديو مباشر ثم اضغط تشغيل.</string>
+<string name="player_loading">جارٍ تحميل الفيديو…</string>
+<string name="player_ready">الفيديو جاهز للتشغيل.</string>
+<string name="player_translation_running">الترجمة نشطة. اسمح بالتقاط الصوت، وقد تتأخر الترجمة قليلاً.</string>
+<string name="player_invalid_url">أدخل رابط فيديو صحيحاً يبدأ بـ http:// أو https://</string>
+<string name="player_load_first">شغّل فيديو أولاً قبل بدء الترجمة.</string>
+<string name="player_error">تعذر تشغيل الفيديو: %1$s</string><string name="translation_quality_title">جودة الترجمة</string><string name="translation_quality_description">وضع Human Quality يمرر الترجمة على مرحلتين: مسودة ثم مراجعة لغوية وسياقية. هذا يرفع الجودة لكنه يزيد زمن الاستجابة واستهلاك API.</string><string name="context_engine_title">محرك الترجمة السياقية — Stage 10</string>
+<string name="context_engine_description">يحافظ على سياق المقاطع السابقة والمصطلحات أثناء الحلقة. لا يخزن الصوت؛ تُحفظ فقط ذاكرة نصية مختصرة للترجمة.</string>
+<string name="context_aware_translation">استخدام السياق لتحسين الترجمة</string>
+<string name="translation_memory">ذاكرة الترجمة لتجنب تكرار الطلبات</string>
+<string name="glossary_hint">قاموس المصطلحات</string>
+<string name="glossary_example">مثال: The Council = المجلس\nThe Gate = البوابة</string>
+<string name="about_description">Sari Subtitle — ترجمة صوتية فورية مع نافذة ترجمة عائمة.</string>
+<string name="video_link">رابط الفيديو</string>
+<string name="paste_url">لصق</string><string name="open_browser">فتح في المتصفح</string>
+<string name="browser_title">متصفح Sari Subtitle</string><string name="open_external">المتصفح الخارجي</string>
+<string name="browser_loading">جارٍ تحميل الصفحة…</string><string name="browser_ready">الصفحة جاهزة</string>
+<string name="browser_invalid_url">الرابط غير صالح أو غير مدعوم.</string><string name="browser_error">تعذر تحميل الصفحة: %1$s</string>
+<string name="browser_ssl_error">تم رفض اتصال SSL غير الموثوق.</string><string name="browser_no_external">لا يوجد متصفح خارجي مناسب لهذا الرابط.</string>
+<string name="browser_platform_notice">هذه صفحة %1$s. تشغيل الفيديو يعتمد على دعم المنصة الرسمي وسياساتها.</string>
+<string name="player_subtitle_url">رابط الترجمة SRT أو WebVTT (اختياري)</string>
+<string name="player_load_subtitle">تحميل الترجمة</string>
+<string name="player_drm_license_url">رابط ترخيص DRM الرسمي (Widevine، اختياري)</string>
+<string name="player_drm_configured">تم إعداد Widevine باستخدام رابط الترخيص الرسمي.</string>
+<string name="player_drm_error">فشل تشغيل DRM الرسمي: %1$s. تأكد من رابط الترخيص وصلاحية الوصول.</string>
+<string name="player_drm_https_required">يجب أن يكون رابط ترخيص DRM عبر HTTPS.</string><string name="player_subtitle_loaded">تم تحميل إعداد الترجمة. إذا لم تظهر، فقد لا يكون المصدر متاحاً أو صالحاً.</string>
+<string name="player_platform_page">هذا رابط صفحة %1$s وليس رابط ملف وسائط مباشر. سيتم فتحه في المتصفح الداخلي.</string>
+<string name="player_open_source">فتح المصدر الأصلي</string>
+<string name="stt_section">تحويل الصوت إلى نص — Speech-to-Text</string><string name="stt_provider">مزوّد STT</string><string name="deepgram_api_key">Deepgram API Key</string><string name="deepgram_test">اختبار Deepgram Key</string><string name="deepgram_get_key">الحصول على مفتاح Deepgram</string><string name="openai_api_key">OpenAI API Key</string><string name="openai_test">اختبار OpenAI Key</string><string name="openai_get_key">الحصول على مفتاح OpenAI</string><string name="translation_section">الترجمة — Translation</string><string name="context_prompt_title">Context Prompt</string><string name="context_prompt_description">أسماء ومصطلحات وسياق يساعد STT والترجمة على الحفاظ على الاتساق.</string><string name="context_prompt_example">أسماء: John, Sarah. مصطلحات: The Council, The Gate.</string><string name="subtitle_position">موضع الترجمة</string><string name="vosk_download">تحميل نموذج Vosk العربي (Offline)</string><string name="vosk_ready">تم تجهيز نموذج Vosk العربي.</string><string name="vosk_failed">تعذر تحميل نموذج Vosk.</string><string name="key_valid">المفتاح صالح.</string><string name="key_invalid">المفتاح غير صالح أو تعذر الاتصال.</string><string name="sync_video">Sync with Video</string><string name="calibrate">Calibrate</string><string name="export_srt">تصدير SRT</string><string name="sync_enabled">مزامنة الفيديو مفعلة.</string><string name="sync_disabled">مزامنة الفيديو متوقفة.</string><string name="calibrate_title">ضبط تأخير الترجمة</string><string name="calibration_set">تم ضبط التأخير: %1$s</string><string name="srt_exported">تم حفظ SRT في Download/SariSubtitle.</string><string name="srt_export_failed">تعذر حفظ ملف SRT.</string><string name="splash_subtitle">Live Translation • Human-Quality Pipeline</string></resources>
+
+====================================================================================================
+FILE: app/src/main/res/drawable/ic_launcher_foreground.xml
+====================================================================================================
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108"><path android:fillColor="#FFFFFF" android:pathData="M24,34 L84,34 L84,46 L24,46 Z M24,52 L72,52 L72,64 L24,64 Z M24,70 L60,70 L60,82 L24,82 Z"/></vector>
+
+
+====================================================================================================
+FILE: app/src/main/res/drawable/ic_launcher_background.xml
+====================================================================================================
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108"><path android:fillColor="#121826" android:pathData="M0,0h108v108h-108z"/></vector>
+
+
+====================================================================================================
+FILE: app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+====================================================================================================
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"><background android:drawable="@drawable/ic_launcher_background"/><foreground android:drawable="@drawable/ic_launcher_foreground"/></adaptive-icon>
+
+
+====================================================================================================
+FILE: app/src/main/res/mipmap-anydpi/ic_launcher.xml
+====================================================================================================
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android"><item android:drawable="@drawable/ic_launcher_background"/><item android:drawable="@drawable/ic_launcher_foreground"/></layer-list>
+

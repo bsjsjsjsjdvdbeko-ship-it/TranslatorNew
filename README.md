@@ -88,3 +88,24 @@ Stage 10 upgrades the translation layer from a single AI pass to a subtitle-edit
 - **Quality selector:** Fast / Balanced / Human Quality. Human Quality costs an extra translation request and can increase latency.
 
 This is designed to move the output substantially closer to professional subtitle practice, but it cannot guarantee human parity: a real human still has access to the complete episode, visual context, cultural knowledge, character identity, and final editorial judgment.
+
+
+## Stage 11 — Live Subtitle Quality & Sync
+
+Stage 11 focuses on the actual use case: arbitrary short videos and live playback rather than pre-made SRT files.
+
+- Professional subtitle-style overlay: bottom-centered, transparent background, white bold text, shadow, two-line limit, and no header/card.
+- Overlay is non-touchable so it does not steal taps from the video player.
+- Live results carry capture timestamps and measured pipeline latency.
+- Segment timestamps from Whisper are used to estimate cue duration instead of always showing every cue for a fixed 2 seconds.
+- Latest-wins audio queue keeps the live pipeline bounded instead of building a multi-second backlog.
+- Old network results are rejected when a newer capture window is already available.
+- Human Quality uses current Groq GPT-OSS 120B in one editorial pass; Balanced/Fast use GPT-OSS 20B.
+- Human Quality uses Whisper Large V3 with a context prompt; other modes use Whisper Large V3 Turbo.
+- Whisper prompt carries terminology and recent context to improve names/terms.
+
+### Important synchronization limitation
+
+For an arbitrary external Android app, Sari Subtitle can timestamp the captured audio with `elapsedRealtime`, but it cannot read that other app's exact video playback position. Therefore external-app synchronization cannot be mathematically exact. The Stage 11 design reduces latency and prevents stale/out-of-order subtitles; exact timeline synchronization is only possible when the app controls the video player's clock.
+
+The Stage 11 implementation does not bypass DRM, content protection, or another app's capture restrictions.
