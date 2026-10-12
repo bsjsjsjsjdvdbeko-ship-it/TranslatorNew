@@ -1,87 +1,74 @@
 package com.sari.subtitle
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
-import okhttp3.MediaType.Companion.toMediaType
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-/** Groq Speech-to-Text client. Returns segment timestamps when the API provides them. */
-class WhisperClient(private val apiKey: String, private val http: OkHttpClient = defaultClient()) {
-    suspend fun transcribe(audioFile: File, language: String = "ar", prompt: String = ""): String =
-        transcribeDetailed(audioFile, language, prompt).text
-
-    suspend fun transcribeDetailed(audioFile: File, language: String = "ar", prompt: String = ""): TranscriptResult = withContext(Dispatchers.IO) {
-        require(apiKey.isNotBlank()) { "أدخل مفتاح Groq API من الإعدادات." }
-        require(audioFile.exists() && audioFile.length() > 0) { "الملف الصوتي فارغ." }
+class WhisperClient(private val apiKey: String, private val http: OkHttpClient = defaultClient()) : SttClient {
+    override suspend fun transcribe(file: File, language: String, contextPrompt: String): SttResult = withContext(Dispatchers.IO) {
+        if (apiKey.isBlank()) return@withContext SttResult("", success = false, error = "أدخل مفتاح Groq API من الإعدادات.")
+        if (!file.exists() || file.length() == 0L) return@withContext SttResult("", success = false, error = "الملف الصوتي فارغ.")
         val body = MultipartBody.Builder().setType(MultipartBody.FORM)
-            .addFormDataPart("model", if (prompt.startsWith("[HIGH_ACCURACY]")) "whisper-large-v3" else "whisper-large-v3-turbo")
+            .addFormDataPart("model", "whisper-large-v3-turbo")
             .addFormDataPart("response_format", "verbose_json")
             .addFormDataPart("temperature", "0")
-            .apply { if (prompt.isNotBlank()) addFormDataPart("prompt", prompt.take(3_000)) }
+            .apply { if (contextPrompt.isNotBlank()) addFormDataPart("prompt", contextPrompt.take(3_000)) }
             .addFormDataPart("timestamp_granularities[]", "segment")
             .apply { if (language.isNotBlank() && language != "auto") addFormDataPart("language", language) }
-            .addFormDataPart("file", audioFile.name, audioFile.asRequestBody("audio/wav".toMediaType()))
-            .build()
-        val request = Request.Builder()
-            .url("https://api.groq.com/openai/v1/audio/transcriptions")
-            .header("Authorization", "Bearer $apiKey")
-            .post(body)
-            .build()
-        retry(request) { raw -> parseResult(raw) }
+            .addFormDataPart("file", file.name, file.asRequestBody("audio/wav".toMediaType())).build()
+        val request = Request.Builder().url("https://api.groq.com/openai/v1/audio/transcriptions").header("Authorization", "Bearer $apiKey").post(body).build()
+        executeWithRetry(request)
     }
 
-    private fun parseResult(raw: String): TranscriptResult {
-        val json = JSONObject(raw)
-        val text = json.optString("text").trim()
-        if (text.isBlank()) error("لم يُرجع Groq نصاً صوتياً.")
-        val segments = mutableListOf<TranscriptSegment>()
-        val array = json.optJSONArray("segments")
-        if (array != null) {
-            for (i in 0 until array.length()) {
-                val item = array.optJSONObject(i) ?: continue
-                val start = item.optDouble("start", Double.NaN)
-                val end = item.optDouble("end", Double.NaN)
-                val segmentText = item.optString("text").trim()
-                if (segmentText.isNotBlank() && start.isFinite() && end.isFinite() && end >= start) {
-                    segments += TranscriptSegment(start * 1000.0, end * 1000.0, segmentText)
-                }
+    suspend fun detectLanguage(file: File): String? = withContext(Dispatchers.IO) {
+        if (apiKey.isBlank() || !file.exists()) return@withContext null
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("model", "whisper-large-v3-turbo")
+            .addFormDataPart("response_format", "verbose_json")
+            .addFormDataPart("temperature", "0")
+            .addFormDataPart("file", file.name, file.asRequestBody("audio/wav".toMediaType())).build()
+        val request = Request.Builder().url("https://api.groq.com/openai/v1/audio/transcriptions").header("Authorization", "Bearer $apiKey").post(body).build()
+        try {
+            http.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                JSONObject(response.body?.string().orEmpty()).optString("language").ifBlank { null }
             }
-        }
-        return TranscriptResult(text, segments)
+        } catch (e: Exception) { Log.d(TAG, "Language detection failed: ${e.message}"); null }
     }
 
-    private suspend fun <T> retry(request: Request, parse: (String) -> T): T {
+    private suspend fun executeWithRetry(request: Request): SttResult {
         var last: Exception? = null
         repeat(3) { i ->
             try {
                 http.newCall(request).execute().use { response ->
                     val raw = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) error("فشل Groq (${response.code}): ${raw.take(180)}")
+                    if (!response.isSuccessful) error("Groq HTTP ${response.code}: ${raw.take(180)}")
                     return parse(raw)
                 }
             } catch (e: Exception) {
-                last = e
+                last = e; Log.d(TAG, "Groq STT attempt ${i + 1} failed: ${e.message}")
                 if (i < 2) delay(500L * (i + 1))
             }
         }
-        throw IllegalStateException("تعذّر الاتصال بخدمة تحويل الصوت بعد 3 محاولات. تحقق من الإنترنت والمفتاح.", last)
+        return SttResult("", success = false, error = "فشل Groq STT بعد 3 محاولات: ${last?.message}")
     }
 
-    companion object {
-        fun defaultClient() = OkHttpClient.Builder()
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(90, TimeUnit.SECONDS)
-            .callTimeout(120, TimeUnit.SECONDS)
-            .build()
-    }
+    private fun parse(raw: String): SttResult = try {
+        val json = JSONObject(raw)
+        val text = json.optString("text").trim()
+        val segments = mutableListOf<Utterance>()
+        json.optJSONArray("segments")?.let { a -> for (i in 0 until a.length()) { val s=a.optJSONObject(i) ?: continue; val t=s.optString("text").trim(); val st=s.optDouble("start", Double.NaN); val en=s.optDouble("end", Double.NaN); if(t.isNotBlank()&&st.isFinite()&&en.isFinite()) segments += Utterance(t,st,en) } }
+        SttResult(text, json.optString("language").ifBlank { null }, utterances = segments, success = true)
+    } catch (e: Exception) { SttResult("", success = false, error = "تعذر تحليل Groq: ${e.message}") }
+
+    companion object { private const val TAG="SariWhisper"; fun defaultClient()=OkHttpClient.Builder().connectTimeout(20,TimeUnit.SECONDS).readTimeout(90,TimeUnit.SECONDS).callTimeout(120,TimeUnit.SECONDS).build() }
 }
-
-data class TranscriptResult(val text: String, val segments: List<TranscriptSegment>)
-data class TranscriptSegment(val startMs: Double, val endMs: Double, val text: String)
