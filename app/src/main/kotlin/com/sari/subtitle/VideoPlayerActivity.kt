@@ -46,5 +46,8 @@ class VideoPlayerActivity:AppCompatActivity(){
     private fun exportSrt(){lifecycleScope.launch{try{val path=SrtExporter.export(this@VideoPlayerActivity,sessionCues.distinctBy{it.startElapsedMs}) ;Toast.makeText(this@VideoPlayerActivity,if(path!=null)getString(R.string.srt_exported) else getString(R.string.srt_export_failed),Toast.LENGTH_LONG).show()}catch(e:Exception){Toast.makeText(this@VideoPlayerActivity,e.message?:getString(R.string.srt_export_failed),Toast.LENGTH_LONG).show()}}}
     private fun openSource(){val raw=urlInput.text.toString().trim();if(VideoPlatformResolver.resolve(raw)!=null)startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(raw)))}
     override fun onDestroy(){handler.removeCallbacksAndMessages(null);runCatching{ContextCompat.startService(this,Intent(this,AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))};runCatching{exportSrt()};playerView.player=null;player?.release();player=null;super.onDestroy()}
-    companion object{const val EXTRA_URL="video_url"}
+
+    companion object {
+        const val EXTRA_URL = "video_url"
+    }
 }

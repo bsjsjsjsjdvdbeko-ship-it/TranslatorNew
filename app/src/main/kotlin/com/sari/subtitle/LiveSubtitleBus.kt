@@ -10,7 +10,8 @@ object LiveSubtitleBus{
     @Volatile private var latestCaptureStartMs=Long.MIN_VALUE
     @Volatile private var videoSyncEnabled=false
     @Volatile private var videoClockOffsetMs:Long=0L
-    private val _current=MutableStateFlow<LiveSubtitle?>(null);val current:StateFlow<LiveSubtitle?>=_current.asStateFlow()
+    private val _current: MutableStateFlow<LiveSubtitle?> = MutableStateFlow(null)
+    val current: StateFlow<LiveSubtitle?> = _current.asStateFlow()
     fun markLatestCapture(startElapsedMs:Long){if(startElapsedMs>latestCaptureStartMs)latestCaptureStartMs=startElapsedMs}
     fun setVideoSync(enabled:Boolean){videoSyncEnabled=enabled}
     fun updatePlayerPosition(positionMs:Long){if(videoSyncEnabled)videoClockOffsetMs=positionMs-SystemClock.elapsedRealtime()}
