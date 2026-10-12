@@ -59,7 +59,7 @@ class AiOrchestrator(private val context: Context) {
 
         for (model in decision.ordered) {
             val key = key(model, TaskType.STT)
-            if (!circuitBreaker.allow(key)) continue
+            if (settings.circuitBreakerEnabled && !circuitBreaker.allow(key)) continue
             val started = System.nanoTime()
             try {
                 val client = client(settings)
@@ -97,7 +97,7 @@ class AiOrchestrator(private val context: Context) {
                 val meta = clientMetaFromError(t)
                 record(key, elapsed, false, t.message ?: t.javaClass.simpleName, 0.0, features, 0.0, 0.0, meta)
                 persistRuntime(model, TaskType.STT, meta)
-                if (isRateLimited(t)) dao.openCircuit(key, cooldownUntil(meta))
+                if (settings.circuitBreakerEnabled && isRateLimited(t)) dao.openCircuit(key, cooldownUntil(meta))
             }
         }
 
@@ -137,7 +137,7 @@ class AiOrchestrator(private val context: Context) {
         val maintenance = context.getSharedPreferences("sari_orchestration", Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         val lastMaintenance = maintenance.getLong("maintenance_at", 0L)
-        if (now - lastMaintenance >= settings.benchmarkIntervalMs) {
+        if (settings.providerBenchmarkEnabled && now - lastMaintenance >= settings.benchmarkIntervalMs) {
             maintenance.edit().putLong("maintenance_at", now).apply()
             kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
                 try { runAutomaticTranslationBenchmark(candidates, force = false) } catch (_: Throwable) {}
@@ -160,7 +160,7 @@ class AiOrchestrator(private val context: Context) {
 
         for (model in decision.ordered) {
             val key = key(model, TaskType.TRANSLATION)
-            if (!circuitBreaker.allow(key)) continue
+            if (settings.circuitBreakerEnabled && !circuitBreaker.allow(key)) continue
             val started = System.nanoTime()
             try {
                 val client = client(settings)
@@ -189,7 +189,7 @@ class AiOrchestrator(private val context: Context) {
                 record(key, elapsed, false, t.message ?: t.javaClass.simpleName, 0.0,
                     speechProfile?.audioFeatures, speechProfile?.wordsPerSecond ?: 0.0, 0.0, meta)
                 persistRuntime(model, TaskType.TRANSLATION, meta)
-                if (isRateLimited(t)) dao.openCircuit(key, cooldownUntil(meta))
+                if (settings.circuitBreakerEnabled && isRateLimited(t)) dao.openCircuit(key, cooldownUntil(meta))
             }
         }
 

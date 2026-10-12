@@ -26,6 +26,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var latest: TextView
     private lateinit var captureFab: FloatingActionButton
+    private lateinit var primaryActionButton: com.google.android.material.button.MaterialButton
+    private lateinit var sourceLanguageSummary: TextView
+    private lateinit var targetLanguageSummary: TextView
+    private lateinit var qualitySummary: TextView
+    private lateinit var engineStatus: TextView
+    private var overlayAutoEnabled = false
     private lateinit var overlaySwitch: MaterialSwitch
     private lateinit var statusDot: View
     private var capturing = false
@@ -57,6 +63,11 @@ class MainActivity : AppCompatActivity() {
         status = findViewById(R.id.captureStatus)
         latest = findViewById(R.id.latestTranslation)
         captureFab = findViewById(R.id.captureFab)
+        primaryActionButton = findViewById(R.id.primaryActionButton)
+        sourceLanguageSummary = findViewById(R.id.sourceLanguageSummary)
+        targetLanguageSummary = findViewById(R.id.targetLanguageSummary)
+        qualitySummary = findViewById(R.id.qualitySummary)
+        engineStatus = findViewById(R.id.engineStatus)
         overlaySwitch = findViewById(R.id.overlaySwitch)
         statusDot = findViewById(R.id.statusDot)
         findViewById<View>(R.id.settingsShortcut).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
@@ -75,9 +86,10 @@ class MainActivity : AppCompatActivity() {
             findViewById<TextInputEditText>(R.id.homeUrlInput).setText(text)
         }
         findViewById<View>(R.id.historyShortcut).setOnClickListener { startActivity(Intent(this, HistoryActivity::class.java)) }
+        primaryActionButton.setOnClickListener { toggleCapture() }
         captureFab.setOnClickListener {
             it.animate().scaleX(0.92f).scaleY(0.92f).setDuration(80).withEndAction { it.animate().scaleX(1f).scaleY(1f).setDuration(110).start() }.start()
-            if (capturing) stopCapture() else requestCaptureStart()
+            toggleCapture()
         }
         overlaySwitch.setOnCheckedChangeListener { _, checked ->
             if (checked && !Settings.canDrawOverlays(this)) {
@@ -96,6 +108,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         setCaptureUi(false)
+        loadSimpleProfile()
         handleIncomingIntent(intent)
         lifecycleScope.launch {
             AppDatabase.get(this@MainActivity).translationDao().observeLatest().collect { items ->
@@ -110,6 +123,10 @@ class MainActivity : AppCompatActivity() {
         captureFab.setImageResource(if (active) R.drawable.ic_stop else R.drawable.ic_play)
         captureFab.contentDescription = getString(if (active) R.string.stop_capture else R.string.start_capture)
         captureFab.backgroundTintList = ContextCompat.getColorStateList(this, if (active) R.color.error else R.color.accent)
+        primaryActionButton.text = getString(if (active) R.string.stop_translation else R.string.start_translation)
+        primaryActionButton.setIconResource(if (active) R.drawable.ic_stop else R.drawable.ic_play)
+        primaryActionButton.backgroundTintList = ContextCompat.getColorStateList(this, if (active) R.color.error else R.color.primary)
+        engineStatus.text = getString(if (active) R.string.capture_active else R.string.engine_automatic)
         statusDot.backgroundTintList = ContextCompat.getColorStateList(this, if (active) R.color.accent else R.color.text_secondary)
     }
 
@@ -131,13 +148,40 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             return
         }
+        if (!overlaySwitch.isChecked) {
+            overlayAutoEnabled = true
+            overlaySwitch.isChecked = true
+        }
         val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         projectionLauncher.launch(manager.createScreenCaptureIntent())
     }
 
     private fun stopCapture() {
         startService(Intent(this, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
+        if (overlayAutoEnabled) {
+            overlaySwitch.isChecked = false
+            startService(Intent(this, OverlayService::class.java).setAction(OverlayService.ACTION_HIDE))
+            overlayAutoEnabled = false
+        }
         setCaptureUi(false)
+    }
+
+    private fun toggleCapture() {
+        if (capturing) stopCapture() else requestCaptureStart()
+    }
+
+    private fun loadSimpleProfile() {
+        lifecycleScope.launch {
+            runCatching { SettingsRepository(this@MainActivity).load() }.onSuccess { s ->
+                sourceLanguageSummary.text = if (s.sourceLanguage.isBlank() || s.sourceLanguage == "auto") "Auto Detect" else s.sourceLanguage.uppercase()
+                targetLanguageSummary.text = if (s.targetLanguage == "ar" || s.targetLanguage.isBlank()) "العربية" else s.targetLanguage.uppercase()
+                qualitySummary.text = when (s.translationQuality.coerceIn(0, 2)) {
+                    SettingsRepository.QUALITY_FAST -> "Fast"
+                    SettingsRepository.QUALITY_HUMAN -> "Human"
+                    else -> "Balanced"
+                }
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

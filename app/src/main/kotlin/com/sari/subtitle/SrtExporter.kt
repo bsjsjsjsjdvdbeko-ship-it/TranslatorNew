@@ -4,23 +4,43 @@ import android.content.ContentValues
 import android.content.Context
 import android.os.Environment
 import android.provider.MediaStore
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
+/** Exports subtitles into the public Downloads/SariSubtitle folder on Android 10+. */
 object SrtExporter {
-    suspend fun export(context: Context, cues: List<SubtitleCue>): String? = withContext(Dispatchers.IO) {
-        if (cues.isEmpty()) return@withContext null
-        val name="SariSubtitle_"+SimpleDateFormat("yyyyMMdd_HHmmss",Locale.US).format(Date())+".srt"
-        val content=cues.mapIndexed { i,c -> "${i+1}\n${format(c.startElapsedMs)} --> ${format(c.endElapsedMs)}\n${c.translated.trim()}\n" }.joinToString("\n")
-        if (android.os.Build.VERSION.SDK_INT >= 29) {
-            val values=ContentValues().apply { put(MediaStore.Downloads.DISPLAY_NAME,name); put(MediaStore.Downloads.MIME_TYPE,"application/x-subrip"); put(MediaStore.Downloads.RELATIVE_PATH,Environment.DIRECTORY_DOWNLOADS+"/SariSubtitle/") }
-            val uri=context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,values) ?: return@withContext null
-            context.contentResolver.openOutputStream(uri)?.use{it.write(content.toByteArray(Charsets.UTF_8))} ?: return@withContext null
-            uri.toString()
-        } else null
+    fun export(context: Context, cues: List<SubtitleCue>, sessionName: String = "sari-subtitles"): String {
+        val safe = sessionName.replace(Regex("[^A-Za-z0-9._-]+"), "_").ifBlank { "sari-subtitles" }
+        val fileName = "$safe.srt"
+        val content = cues.sortedBy { it.startElapsedMs }.mapIndexed { i, c ->
+            "${i + 1}\n${timestamp(c.startElapsedMs)} --> ${timestamp(c.endElapsedMs)}\n${c.translated.trim()}\n"
+        }.joinToString("\n")
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+            put(MediaStore.Downloads.MIME_TYPE, "application/x-subrip")
+            put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/SariSubtitle")
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val resolver = context.contentResolver
+        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            ?: error("تعذر إنشاء ملف SRT في Downloads/SariSubtitle.")
+        try {
+            resolver.openOutputStream(uri)?.use { it.write(content.toByteArray(Charsets.UTF_8)) }
+                ?: error("تعذر فتح ملف SRT للكتابة.")
+            values.clear()
+            values.put(MediaStore.Downloads.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+            return uri.toString()
+        } catch (t: Throwable) {
+            resolver.delete(uri, null, null)
+            throw t
+        }
     }
-    private fun format(ms:Long):String { val x=ms.coerceAtLeast(0); return String.format(Locale.US,"%02d:%02d:%02d,%03d",x/3600000,(x/60000)%60,(x/1000)%60,x%1000) }
+
+    private fun timestamp(ms: Long): String {
+        val safe = ms.coerceAtLeast(0L)
+        val h = safe / 3_600_000
+        val m = (safe % 3_600_000) / 60_000
+        val s = (safe % 60_000) / 1_000
+        val z = safe % 1_000
+        return "%02d:%02d:%02d,%03d".format(h, m, s, z)
+    }
 }
