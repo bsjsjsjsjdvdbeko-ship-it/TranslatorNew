@@ -38,5 +38,4 @@ dependencies {
     kapt("androidx.room:room-compiler:2.6.1")
     testImplementation(kotlin("test"))
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    implementation("com.alphacephei:vosk-android:0.3.47")
 }
