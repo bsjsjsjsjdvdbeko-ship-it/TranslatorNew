@@ -1,7 +1,6 @@
 package com.sari.subtitle
 
 import android.content.Context
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll

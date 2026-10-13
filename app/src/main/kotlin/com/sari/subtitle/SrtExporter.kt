@@ -10,8 +10,8 @@ object SrtExporter {
     fun export(context: Context, cues: List<SubtitleCue>, sessionName: String = "sari-subtitles"): String {
         val safe = sessionName.replace(Regex("[^A-Za-z0-9._-]+"), "_").ifBlank { "sari-subtitles" }
         val fileName = "$safe.srt"
-        val content = cues.sortedBy { it.startMs }.mapIndexed { i, c ->
-            "${i + 1}\n${timestamp(c.startMs)} --> ${timestamp(c.endMs)}\n${c.text.trim()}\n"
+        val content = cues.sortedBy { it.startElapsedMs }.mapIndexed { i, c ->
+            "${i + 1}\n${timestamp(c.startElapsedMs)} --> ${timestamp(c.endElapsedMs)}\n${c.translated.trim()}\n"
         }.joinToString("\n")
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, fileName)

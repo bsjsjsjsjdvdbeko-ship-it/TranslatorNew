@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 abstract class SettingsSubpageBase : AppCompatActivity() {
     abstract val page: String
     private lateinit var fields: List<android.widget.EditText>
-    private lateinit var layouts: List<TextInputLayout>
+    private lateinit var layouts: List<TextInputLayout?>
     private lateinit var switches: List<MaterialSwitch>
     private lateinit var slider1: Slider
     private lateinit var slider2: Slider
@@ -29,6 +29,14 @@ abstract class SettingsSubpageBase : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        try {
+            initializeSettingsPage(savedInstanceState)
+        } catch (e: Exception) {
+            showInitializationError(e)
+        }
+    }
+
+    private fun initializeSettingsPage(savedInstanceState: Bundle?) {
         val layoutId = resources.getIdentifier("activity_settings_$page", "layout", packageName)
         check(layoutId != 0) { "Layout activity_settings_$page غير موجود" }
         setContentView(layoutId)
@@ -48,7 +56,7 @@ abstract class SettingsSubpageBase : AppCompatActivity() {
             else -> emptyList()
         }
         fields = fieldIds.map { findViewById<android.widget.EditText>(it) }
-        layouts = fieldIds.mapNotNull { id -> (findViewById<android.view.View>(id).parent as? TextInputLayout) }
+        layouts = fieldIds.map { id -> runCatching { findViewById<android.view.View>(id)?.parent as? TextInputLayout }.getOrNull() }
         val switchIds = when (page) {
             "context" -> listOf(R.id.contextAwareSwitch, R.id.translationMemorySwitch)
             "orchestration" -> listOf(R.id.smartRoutingSwitch, R.id.qualityRetrySwitch, R.id.compareCandidatesSwitch, R.id.streamingOrchestrationSwitch, R.id.quotaMonitoringSwitch, R.id.providerBenchmarkSwitch, R.id.circuitBreakerSwitch, R.id.adaptiveRoutingSwitch, R.id.hedgedFailoverSwitch)
@@ -58,13 +66,50 @@ abstract class SettingsSubpageBase : AppCompatActivity() {
         slider1 = if (page == "appearance") findViewById(R.id.fontSizeSeek) else Slider(this)
         slider2 = if (page == "appearance") findViewById(R.id.opacitySeek) else Slider(this)
         val saveId = when(page) { "keys" -> R.id.saveKeysButton; "languages" -> R.id.saveLanguagesButton; "appearance" -> R.id.saveAppearanceButton; "quality" -> R.id.saveQualityButton; "context" -> R.id.saveContextButton; "omniroute" -> R.id.saveOmniRouteButton; "orchestration" -> R.id.saveOrchestrationButton; else -> R.id.saveAboutButton }
-        findViewById<MaterialButton>(saveId).setOnClickListener { if (page == "about") finish() else savePage() }
-        if (page == "keys") findViewById<MaterialButton>(R.id.getGroqKeyButton).setOnClickListener { open("https://console.groq.com/keys") }
-        if (page == "omniroute") findViewById<MaterialButton>(R.id.testOmniRouteButton).setOnClickListener { testOmni() }
-        if (page == "orchestration") findViewById<MaterialButton>(R.id.providerDashboardButton).setOnClickListener { startActivity(Intent(this, ProviderDashboardActivity::class.java)) }
+        val saveButton = runCatching { findViewById<MaterialButton>(saveId) }.getOrNull()
+        if (saveButton != null) {
+            saveButton.setOnClickListener { if (page == "about") finish() else savePage() }
+        } else {
+            throw IllegalStateException("زر الحفظ غير موجود في صفحة ${pageTitle()} (ID=$saveId)")
+        }
+        if (page == "keys") runCatching { findViewById<MaterialButton>(R.id.getGroqKeyButton) }.getOrNull()?.setOnClickListener { open("https://console.groq.com/keys") }
+        if (page == "omniroute") runCatching { findViewById<MaterialButton>(R.id.testOmniRouteButton) }.getOrNull()?.setOnClickListener { testOmni() }
+        if (page == "orchestration") runCatching { findViewById<MaterialButton>(R.id.providerDashboardButton) }.getOrNull()?.setOnClickListener { runCatching { startActivity(Intent(this, ProviderDashboardActivity::class.java)) }.onFailure { toast("تعذر فتح لوحة مزودي الذكاء الاصطناعي: ${it.message ?: "خطأ غير معروف"}") } }
         configure()
         lifecycleScope.launch { try { current=s.load(); populate() } catch(e:Exception) { toast(e.message ?: getString(R.string.settings_save_failed)) } }
     }
+    private fun showInitializationError(error: Exception) {
+        val message = error.message?.takeIf { it.isNotBlank() }
+            ?: error.javaClass.simpleName
+        android.util.Log.e("SettingsSubpageBase", "Failed to initialize settings page: $page", error)
+        val root = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+            setPadding(32, 32, 32, 32)
+            setBackgroundColor(android.graphics.Color.WHITE)
+        }
+        val title = TextView(this).apply {
+            text = "تعذر فتح صفحة الإعدادات"
+            textSize = 20f
+            setTextColor(android.graphics.Color.BLACK)
+        }
+        val detail = TextView(this).apply {
+            text = "حدث خطأ أثناء تهيئة صفحة ${page.ifBlank { "الإعدادات" }}.\n$message"
+            textSize = 15f
+            setTextColor(android.graphics.Color.DKGRAY)
+            setPadding(0, 20, 0, 24)
+        }
+        val back = MaterialButton(this).apply {
+            text = "العودة"
+            setOnClickListener { finish() }
+        }
+        root.addView(title)
+        root.addView(detail)
+        root.addView(back)
+        setContentView(root)
+        Toast.makeText(this, "تعذر فتح الصفحة؛ راجع رسالة الخطأ الظاهرة.", Toast.LENGTH_LONG).show()
+    }
+
     private fun pageTitle() = when(page) {
         "keys" -> "مفاتيح API"; "languages" -> "اللغات"; "appearance" -> "المظهر"
         "quality" -> "جودة الترجمة"; "context" -> "الترجمة السياقية"; "omniroute" -> "OmniRoute"
@@ -81,7 +126,7 @@ abstract class SettingsSubpageBase : AppCompatActivity() {
             "about" -> listOf("Sari Subtitle","الإصدار: "+BuildConfig.VERSION_NAME,"ترجمة صوتية فورية مع نافذة عائمة","")
             else -> listOf("","","","")
         }
-        fields.forEachIndexed { i, f -> val label = labels.getOrElse(i) { "" }; layouts[i].hint = label; f.hint = label }
+        fields.forEachIndexed { i, f -> val label = labels.getOrElse(i) { "" }; layouts.getOrNull(i)?.hint = label; f.hint = label }
         if (page == "keys") {
             (fields[0] as? MaterialAutoCompleteTextView)?.apply {
                 setAdapter(android.widget.ArrayAdapter(this@SettingsSubpageBase, android.R.layout.simple_dropdown_item_1line,
@@ -114,8 +159,8 @@ abstract class SettingsSubpageBase : AppCompatActivity() {
         if(page=="appearance") {
             findViewById<TextView>(R.id.slider1Label).visibility=View.VISIBLE; slider1.visibility=View.VISIBLE
             findViewById<TextView>(R.id.slider2Label).visibility=View.VISIBLE; slider2.visibility=View.VISIBLE
-            slider1.valueFrom=12f;slider1.valueTo=48f;slider1.stepSize=1f
-            slider2.valueFrom=0f;slider2.valueTo=100f;slider2.stepSize=1f
+            slider1.valueTo=48f; slider1.valueFrom=12f; slider1.stepSize=1f
+            slider2.valueTo=100f; slider2.valueFrom=0f; slider2.stepSize=1f
             findViewById<TextView>(R.id.slider1Label).text="حجم الخط"
             findViewById<TextView>(R.id.slider2Label).text="الشفافية (%)"
             val preview = findViewById<TextView>(R.id.appearancePreview)
@@ -182,7 +227,7 @@ abstract class SettingsSubpageBase : AppCompatActivity() {
         }
         if(page=="omniroute" && v[0].isNotBlank()) {
             val parsed = runCatching { Uri.parse(v[0]) }.getOrNull()
-            if (!android.util.Patterns.WEB_URL.matcher(v[0]).matches() || parsed?.scheme !in listOf("https", "http") || parsed?.host.isNullOrBlank()) { toast("عنوان URL غير صالح؛ أدخل عنوان HTTP(S) كاملًا"); return }
+            if (!android.util.Patterns.WEB_URL.matcher(v[0]).matches() || parsed?.scheme !in listOf("https", "http") || parsed.host.isNullOrBlank()) { toast("عنوان URL غير صالح؛ أدخل عنوان HTTP(S) كاملًا"); return }
         }
         if(page=="languages") {
             val languagePattern = Regex("(?i)^(auto|[a-z]{2,3}([_-][a-z]{2,4})?)$")
