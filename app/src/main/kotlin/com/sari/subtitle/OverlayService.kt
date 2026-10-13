@@ -40,6 +40,10 @@ class OverlayService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_HIDE -> { remove(); stopSelf(); return START_NOT_STICKY }
+            ACTION_APPLY_SETTINGS -> {
+                if (panel != null) applySettings() else stopSelf(startId)
+                return START_NOT_STICKY
+            }
             ACTION_UPDATE -> {
                 val translated = intent.getStringExtra(EXTRA_TRANSLATED).orEmpty().trim()
                 if (translated.isBlank()) return START_NOT_STICKY
@@ -59,7 +63,17 @@ class OverlayService : Service() {
     private fun applySettings() {
         serviceScope.launch {
             val settings = try { SettingsRepository(this@OverlayService).load() } catch (_: Exception) { AppSettings() }
-            translatedText?.textSize = settings.fontSize.toFloat().coerceIn(16f, 42f)
+            translatedText?.textSize = settings.fontSize.toFloat().coerceIn(12f, 48f)
+            translatedText?.alpha = settings.opacity.coerceIn(0, 100) / 100f
+            params?.let { p ->
+                p.gravity = when (settings.subtitlePosition) {
+                    "top" -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                    "center" -> Gravity.CENTER
+                    else -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                }
+                p.y = if (settings.subtitlePosition == "top") (48 * resources.displayMetrics.density).toInt() else 0
+                runCatching { wm?.updateViewLayout(panel, p) }
+            }
             val bg = GradientDrawable().apply {
                 setColor(Color.TRANSPARENT)
             }
@@ -140,6 +154,7 @@ class OverlayService : Service() {
     companion object {
         const val ACTION_SHOW = "com.sari.subtitle.SHOW_OVERLAY"
         const val ACTION_HIDE = "com.sari.subtitle.HIDE_OVERLAY"
+        const val ACTION_APPLY_SETTINGS = "com.sari.subtitle.APPLY_OVERLAY_SETTINGS"
         const val ACTION_UPDATE = "com.sari.subtitle.UPDATE_OVERLAY"
         const val EXTRA_ORIGINAL = "original"
         const val EXTRA_TRANSLATED = "translated"

@@ -1,0 +1,24 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/background" android:fillViewport="true" android:layoutDirection="locale">
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp">
+  <com.google.android.material.appbar.MaterialToolbar android:id="@+id/subpageToolbar" android:layout_width="match_parent" android:layout_height="wrap_content" app:titleTextColor="@color/text_primary" app:navigationIcon="@drawable/ic_arrow_back" />
+  <TextView android:id="@+id/subpageDescription" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="إعداد عنوان OmniRoute والنماذج واختبار الاتصال." android:textSize="14sp" android:textColor="@color/text_secondary" android:layout_marginTop="10dp" />
+  <com.google.android.material.textfield.TextInputLayout android:id="@+id/omniRouteBaseUrlInputLayout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" app:boxBackgroundMode="outline">
+   <com.google.android.material.textfield.TextInputEditText android:id="@+id/omniRouteBaseUrlInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Base URL" android:inputType="textUri" />
+  </com.google.android.material.textfield.TextInputLayout>
+  <com.google.android.material.textfield.TextInputLayout android:id="@+id/omniRouteKeyInputLayout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" app:boxBackgroundMode="outline">
+   <com.google.android.material.textfield.TextInputEditText android:id="@+id/omniRouteKeyInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="API Key" android:inputType="textPassword" />
+  </com.google.android.material.textfield.TextInputLayout>
+  <com.google.android.material.textfield.TextInputLayout android:id="@+id/omniRouteSttModelsInputLayout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" app:boxBackgroundMode="outline">
+   <com.google.android.material.textfield.TextInputEditText android:id="@+id/omniRouteSttModelsInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="STT Models" android:inputType="text" android:text="deepgram/nova-3,assemblyai/best" />
+  </com.google.android.material.textfield.TextInputLayout>
+  <com.google.android.material.textfield.TextInputLayout android:id="@+id/omniRouteTranslationModelInputLayout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" app:boxBackgroundMode="outline">
+   <com.google.android.material.textfield.TextInputEditText android:id="@+id/omniRouteTranslationModelInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Translation Model" android:inputType="text" android:text="openai/gpt-oss-20b" />
+  </com.google.android.material.textfield.TextInputLayout>
+  <com.google.android.material.textfield.TextInputLayout android:id="@+id/omniRouteTranslationModelsInputLayout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" app:boxBackgroundMode="outline">
+   <com.google.android.material.textfield.TextInputEditText android:id="@+id/omniRouteTranslationModelsInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="نماذج الترجمة البديلة" android:inputType="text" />
+  </com.google.android.material.textfield.TextInputLayout>
+  <com.google.android.material.button.MaterialButton android:id="@+id/testOmniRouteButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="اختبار اتصال OmniRoute" />
+  <com.google.android.material.button.MaterialButton android:id="@+id/saveOmniRouteButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="حفظ OmniRoute" />
+ </LinearLayout>
+</ScrollView>

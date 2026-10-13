@@ -39,7 +39,17 @@ class TranslationRepository(private val context: Context) {
                 )
             }
         } else {
-            WhisperClient(settings.speechKey).transcribeDetailed(audioFile, settings.speechLanguage, whisperPrompt)
+            when (settings.sttProvider) {
+                "deepgram" -> DeepgramClient(settings.deepgramKey).transcribe(audioFile, settings.speechLanguage, whisperPrompt)
+                "vosk" -> {
+                    val modelsRoot = File(context.filesDir, "vosk-models")
+                    val modelDir = modelsRoot.listFiles()?.firstOrNull {
+                        it.isDirectory && (it.name.startsWith("vosk-model-ar-mgb2") || File(it, "am").exists())
+                    } ?: error("نموذج Vosk العربي غير موجود. افتح إعدادات STT وحمّل النموذج أولاً.")
+                    VoskClient(modelDir).transcribe(audioFile, settings.speechLanguage, whisperPrompt)
+                }
+                else -> WhisperClient(settings.speechKey).transcribeDetailed(audioFile, settings.speechLanguage, whisperPrompt)
+            }
         }
         val speech = whisperResult.text.trim()
         val sourceLanguage = settings.sourceLanguage.ifBlank { "auto" }
@@ -93,7 +103,7 @@ class TranslationRepository(private val context: Context) {
                     SettingsRepository.PROVIDER_OPENAI -> TranslationProvider.OPENAI
                     else -> TranslationProvider.MYMEMORY
                 }
-                val translationApiKey = if (provider == TranslationProvider.GROQ) settings.speechKey else settings.translationKey
+                val translationApiKey = when (provider) { TranslationProvider.GROQ -> settings.speechKey; TranslationProvider.OPENAI -> settings.openAiKey.ifBlank { settings.translationKey }; else -> settings.translationKey }
                 TranslationClient(provider, translationApiKey, settings.myMemoryEmail)
                     .translateWithContext(speech, sourceLanguage, targetLanguage, contextPrompt, quality)
             }
@@ -131,12 +141,13 @@ class TranslationRepository(private val context: Context) {
     }
 
     private fun buildWhisperPrompt(settings: AppSettings, context: TranslationContext): String {
-        val glossary = context.glossary.entries.joinToString(", ") { "${it.key}=${it.value}" }
+        val glossary = (context.glossary.entries.map { "${it.key}=${it.value}" } + settings.glossary.lines().map { it.trim() }.filter { it.isNotBlank() }).joinToString(", ")
         val recent = context.previousSegments.takeLast(4).joinToString(" | ")
         return buildString {
             if (settings.translationQuality == SettingsRepository.QUALITY_HUMAN) append("[HIGH_ACCURACY] ")
             append("Transcribe spoken dialogue accurately. Preserve names, technical terms, places, and recurring words exactly when heard. ")
             if (glossary.isNotBlank()) append("Known terminology: ").append(glossary).append(". ")
+            if (settings.contextPrompt.isNotBlank()) append("Additional translation context: ").append(settings.contextPrompt.take(1000)).append(". ")
             if (recent.isNotBlank()) append("Recent context for spelling only: ").append(recent)
         }.take(3_000)
     }

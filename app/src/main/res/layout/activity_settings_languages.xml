@@ -1,0 +1,17 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/background" android:fillViewport="true" android:layoutDirection="locale">
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp">
+  <com.google.android.material.appbar.MaterialToolbar android:id="@+id/subpageToolbar" android:layout_width="match_parent" android:layout_height="wrap_content" app:titleTextColor="@color/text_primary" app:navigationIcon="@drawable/ic_arrow_back" />
+  <TextView android:id="@+id/subpageDescription" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="حدد لغات الكلام والمصدر والهدف. استخدم auto للكشف التلقائي عند دعم المزود." android:textSize="14sp" android:textColor="@color/text_secondary" android:layout_marginTop="10dp" />
+  <com.google.android.material.textfield.TextInputLayout android:id="@+id/speechLanguageInputLayout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" app:boxBackgroundMode="outline">
+   <com.google.android.material.textfield.TextInputEditText android:id="@+id/speechLanguageInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="لغة التعرّف على الكلام" android:inputType="text" android:text="auto" />
+  </com.google.android.material.textfield.TextInputLayout>
+  <com.google.android.material.textfield.TextInputLayout android:id="@+id/sourceLanguageInputLayout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" app:boxBackgroundMode="outline">
+   <com.google.android.material.textfield.TextInputEditText android:id="@+id/sourceLanguageInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="لغة المصدر" android:inputType="text" android:text="auto" />
+  </com.google.android.material.textfield.TextInputLayout>
+  <com.google.android.material.textfield.TextInputLayout android:id="@+id/targetLanguageInputLayout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" app:boxBackgroundMode="outline">
+   <com.google.android.material.textfield.TextInputEditText android:id="@+id/targetLanguageInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="لغة الهدف" android:inputType="text" android:text="ar" />
+  </com.google.android.material.textfield.TextInputLayout>
+  <com.google.android.material.button.MaterialButton android:id="@+id/saveLanguagesButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="حفظ اللغات" />
+ </LinearLayout>
+</ScrollView>

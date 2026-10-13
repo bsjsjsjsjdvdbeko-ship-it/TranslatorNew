@@ -1,0 +1,18 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/background" android:fillViewport="true" android:layoutDirection="locale">
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp">
+  <com.google.android.material.appbar.MaterialToolbar android:id="@+id/subpageToolbar" android:layout_width="match_parent" android:layout_height="wrap_content" app:titleTextColor="@color/text_primary" app:navigationIcon="@drawable/ic_arrow_back" />
+  <TextView android:id="@+id/subpageDescription" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="خصّص حجم الخط والشفافية وموضع الترجمة العائمة." android:textSize="14sp" android:textColor="@color/text_secondary" android:layout_marginTop="10dp" />
+  <TextView android:id="@+id/slider1Label" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="حجم الخط" android:textSize="14sp" android:textColor="@color/text_primary" android:layout_marginTop="10dp" />
+  <com.google.android.material.slider.Slider android:id="@+id/fontSizeSeek" android:layout_width="match_parent" android:layout_height="wrap_content" android:valueFrom="12" android:valueTo="48" android:stepSize="1" />
+  <TextView android:id="@+id/fontSizeValue" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="30 sp" android:textSize="14sp" android:textColor="@color/text_primary" android:layout_marginTop="10dp" />
+  <TextView android:id="@+id/slider2Label" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="الشفافية" android:textSize="14sp" android:textColor="@color/text_primary" android:layout_marginTop="10dp" />
+  <com.google.android.material.slider.Slider android:id="@+id/opacitySeek" android:layout_width="match_parent" android:layout_height="wrap_content" android:valueFrom="0" android:valueTo="100" android:stepSize="1" />
+  <TextView android:id="@+id/opacityValue" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="82%" android:textSize="14sp" android:textColor="@color/text_primary" android:layout_marginTop="10dp" />
+  <com.google.android.material.textfield.TextInputLayout android:id="@+id/positionSpinnerLayout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" app:boxBackgroundMode="outline">
+   <com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/positionSpinner" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="موضع الترجمة" android:inputType="text" />
+  </com.google.android.material.textfield.TextInputLayout>
+  <TextView android:id="@+id/appearancePreview" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="معاينة الترجمة العائمة" android:textSize="18sp" android:textColor="@color/text_primary" android:layout_marginTop="10dp" />
+  <com.google.android.material.button.MaterialButton android:id="@+id/saveAppearanceButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="حفظ المظهر" />
+ </LinearLayout>
+</ScrollView>

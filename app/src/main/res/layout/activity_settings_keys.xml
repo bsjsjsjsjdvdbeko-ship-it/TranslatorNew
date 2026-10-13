@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/background" android:fillViewport="true" android:layoutDirection="locale">
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp">
+  <com.google.android.material.appbar.MaterialToolbar android:id="@+id/subpageToolbar" android:layout_width="match_parent" android:layout_height="wrap_content" app:titleTextColor="@color/text_primary" app:navigationIcon="@drawable/ic_arrow_back" />
+  <TextView android:id="@+id/subpageDescription" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="إدارة مزودي الترجمة ومفاتيح API. لا تشارك المفاتيح مع الآخرين." android:textSize="14sp" android:textColor="@color/text_secondary" android:layout_marginTop="10dp" />
+  <com.google.android.material.textfield.TextInputLayout android:id="@+id/providerSpinnerLayout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" app:boxBackgroundMode="outline">
+   <com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/providerSpinner" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="مزوّد الترجمة" android:inputType="text" />
+  </com.google.android.material.textfield.TextInputLayout>
+  <com.google.android.material.textfield.TextInputLayout android:id="@+id/groqKeyInputLayout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" app:boxBackgroundMode="outline">
+   <com.google.android.material.textfield.TextInputEditText android:id="@+id/groqKeyInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Groq API Key" android:inputType="textPassword" />
+  </com.google.android.material.textfield.TextInputLayout>
+  <com.google.android.material.button.MaterialButton android:id="@+id/getGroqKeyButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="الحصول على مفتاح Groq" />
+  <com.google.android.material.textfield.TextInputLayout android:id="@+id/translationKeyInputLayout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" app:boxBackgroundMode="outline">
+   <com.google.android.material.textfield.TextInputEditText android:id="@+id/translationKeyInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Translation API Key" android:inputType="textPassword" />
+  </com.google.android.material.textfield.TextInputLayout>
+  <com.google.android.material.textfield.TextInputLayout android:id="@+id/myMemoryEmailInputLayout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" app:boxBackgroundMode="outline">
+   <com.google.android.material.textfield.TextInputEditText android:id="@+id/myMemoryEmailInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="MyMemory Email" android:inputType="textEmailAddress" />
+  </com.google.android.material.textfield.TextInputLayout>
+  <com.google.android.material.button.MaterialButton android:id="@+id/saveKeysButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="حفظ المفاتيح" />
+ </LinearLayout>
+</ScrollView>

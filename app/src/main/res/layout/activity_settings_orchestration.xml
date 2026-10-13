@@ -1,0 +1,24 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/background" android:fillViewport="true" android:layoutDirection="locale">
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp">
+  <com.google.android.material.appbar.MaterialToolbar android:id="@+id/subpageToolbar" android:layout_width="match_parent" android:layout_height="wrap_content" app:titleTextColor="@color/text_primary" app:navigationIcon="@drawable/ic_arrow_back" />
+  <TextView android:id="@+id/subpageDescription" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="تحكم في التوجيه الذكي ومراقبة مزودي الذكاء الاصطناعي." android:textSize="14sp" android:textColor="@color/text_secondary" android:layout_marginTop="10dp" />
+  <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/smartRoutingSwitch" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Smart Routing" android:layout_marginTop="6dp" />
+  <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/qualityRetrySwitch" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Quality-aware Retry" android:layout_marginTop="6dp" />
+  <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/compareCandidatesSwitch" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Compare Candidates" android:layout_marginTop="6dp" />
+  <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/streamingOrchestrationSwitch" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Streaming Orchestration" android:layout_marginTop="6dp" />
+  <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/quotaMonitoringSwitch" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Quota Monitoring" android:layout_marginTop="6dp" />
+  <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/providerBenchmarkSwitch" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Provider Benchmark" android:layout_marginTop="6dp" />
+  <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/circuitBreakerSwitch" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Circuit Breaker" android:layout_marginTop="6dp" />
+  <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/adaptiveRoutingSwitch" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Adaptive Routing" android:layout_marginTop="6dp" />
+  <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/hedgedFailoverSwitch" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Hedged Failover" android:layout_marginTop="6dp" />
+  <com.google.android.material.textfield.TextInputLayout android:id="@+id/benchmarkIntervalInputLayout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" app:boxBackgroundMode="outline">
+   <com.google.android.material.textfield.TextInputEditText android:id="@+id/benchmarkIntervalInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="فترة القياس الدوري (بالساعات)" android:inputType="number" android:text="24" />
+  </com.google.android.material.textfield.TextInputLayout>
+  <com.google.android.material.textfield.TextInputLayout android:id="@+id/hedgeDelayInputLayout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" app:boxBackgroundMode="outline">
+   <com.google.android.material.textfield.TextInputEditText android:id="@+id/hedgeDelayInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="تأخير الإرسال الاحتياطي (مللي ثانية)" android:inputType="number" android:text="250" />
+  </com.google.android.material.textfield.TextInputLayout>
+  <com.google.android.material.button.MaterialButton android:id="@+id/providerDashboardButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="فتح لوحة مزودي الذكاء الاصطناعي" />
+  <com.google.android.material.button.MaterialButton android:id="@+id/saveOrchestrationButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="حفظ إعدادات التنسيق" />
+ </LinearLayout>
+</ScrollView>

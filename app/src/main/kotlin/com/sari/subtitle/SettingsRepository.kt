@@ -14,11 +14,16 @@ data class AppSettings(
     val targetLanguage: String = "ar",
     val fontSize: Int = 30,
     val opacity: Int = 82,
+    val subtitlePosition: String = "bottom",
     val myMemoryEmail: String = "",
     val speechLanguage: String = "auto",
+    val sttProvider: String = "groq",
+    val deepgramKey: String = "",
+    val openAiKey: String = "",
     val contextAwareTranslation: Boolean = true,
     val translationMemoryEnabled: Boolean = true,
     val glossary: String = "",
+    val contextPrompt: String = "",
     val translationQuality: Int = SettingsRepository.QUALITY_HUMAN,
     val omniRouteBaseUrl: String = "",
     val omniRouteKey: String = "",
@@ -56,11 +61,13 @@ class SettingsRepository(context: Context) {
         target: String,
         font: Int,
         opacity: Int,
+        subtitlePosition: String = "bottom",
         email: String,
         speechLanguage: String,
         contextAwareTranslation: Boolean = true,
         translationMemoryEnabled: Boolean = true,
         glossary: String = "",
+        contextPrompt: String = "",
         translationQuality: Int = QUALITY_HUMAN,
         omniRouteBaseUrl: String = "",
         omniRouteKey: String = "",
@@ -89,11 +96,13 @@ class SettingsRepository(context: Context) {
             .putString("target", target)
             .putInt("font", font.coerceIn(12, 48))
             .putInt("opacity", opacity.coerceIn(0, 100))
+            .putString("subtitlePosition", subtitlePosition)
             .putString("email", email)
             .putString("speechLanguage", speechLanguage)
             .putBoolean("contextAwareTranslation", contextAwareTranslation)
             .putBoolean("translationMemoryEnabled", translationMemoryEnabled)
             .putString("glossary", glossary)
+            .putString("contextPrompt", contextPrompt)
             .putInt("translationQuality", translationQuality.coerceIn(QUALITY_FAST, QUALITY_HUMAN))
             .putString("omniRouteBaseUrl", omniRouteBaseUrl)
             .putString("omniRouteKey", omniRouteKey)
@@ -118,7 +127,9 @@ class SettingsRepository(context: Context) {
         val p = prefs ?: return@withContext AppSettings()
         val storedProvider = p.getInt("provider", PROVIDER_GROQ)
         // Stage 4 stored 0=Google and 1=MyMemory. Migrate once to Stage 5's 0=Groq, 1=Google, 2=MyMemory.
-        val provider = if (p.getBoolean("providerSchemaV2", false)) storedProvider.coerceIn(0, PROVIDER_OPENAI) else when (storedProvider) {
+        val provider = if (p.getBoolean("providerSchemaV2", false)) storedProvider.coerceIn(0, PROVIDER_OPENAI)
+        else if (!p.contains("provider")) PROVIDER_GROQ
+        else when (storedProvider) {
             0 -> PROVIDER_GOOGLE
             else -> PROVIDER_MYMEMORY
         }
@@ -130,11 +141,16 @@ class SettingsRepository(context: Context) {
             targetLanguage = p.getString("target", "ar").orEmpty(),
             fontSize = p.getInt("font", 30),
             opacity = p.getInt("opacity", 82),
+            subtitlePosition = p.getString("subtitlePosition", "bottom").orEmpty(),
             myMemoryEmail = p.getString("email", "").orEmpty(),
             speechLanguage = p.getString("speechLanguage", "auto").orEmpty(),
+            sttProvider = p.getString("sttProvider", "groq").orEmpty(),
+            deepgramKey = p.getString("deepgramKey", "").orEmpty(),
+            openAiKey = p.getString("openAiKey", "").orEmpty(),
             contextAwareTranslation = p.getBoolean("contextAwareTranslation", true),
             translationMemoryEnabled = p.getBoolean("translationMemoryEnabled", true),
             glossary = p.getString("glossary", "").orEmpty(),
+            contextPrompt = p.getString("contextPrompt", "").orEmpty(),
             translationQuality = p.getInt("translationQuality", QUALITY_HUMAN).coerceIn(QUALITY_FAST, QUALITY_HUMAN),
             omniRouteBaseUrl = p.getString("omniRouteBaseUrl", "").orEmpty(),
             omniRouteKey = p.getString("omniRouteKey", "").orEmpty(),
@@ -153,6 +169,37 @@ class SettingsRepository(context: Context) {
             hedgedFailoverEnabled = p.getBoolean("hedgedFailoverEnabled", false),
             hedgeDelayMs = p.getLong("hedgeDelayMs", 0L).coerceIn(0L, 2_000L)
         )
+    }
+
+    suspend fun saveSttSettings(sttProvider: String, deepgramKey: String, openAiKey: String) = withContext(Dispatchers.IO) {
+        val p = prefs ?: throw IllegalStateException("تعذر تفعيل التخزين المشفر على هذا الجهاز.")
+        p.edit()
+            .putString("sttProvider", sttProvider)
+            .putString("deepgramKey", deepgramKey.trim())
+            .putString("openAiKey", openAiKey.trim())
+            .apply()
+    }
+
+
+    /** Saves a complete loaded snapshot so editing one settings screen cannot reset unrelated fields. */
+    suspend fun saveSnapshot(s: AppSettings) {
+        save(
+            provider = s.provider, speechKey = s.speechKey, translationKey = s.translationKey,
+            source = s.sourceLanguage, target = s.targetLanguage, font = s.fontSize, opacity = s.opacity, subtitlePosition = s.subtitlePosition,
+            email = s.myMemoryEmail, speechLanguage = s.speechLanguage,
+            contextAwareTranslation = s.contextAwareTranslation, translationMemoryEnabled = s.translationMemoryEnabled,
+            glossary = s.glossary, contextPrompt = s.contextPrompt, translationQuality = s.translationQuality,
+            omniRouteBaseUrl = s.omniRouteBaseUrl, omniRouteKey = s.omniRouteKey,
+            omniRouteSttModels = s.omniRouteSttModels, omniRouteTranslationModel = s.omniRouteTranslationModel,
+            omniRouteTranslationModels = s.omniRouteTranslationModels,
+            smartRoutingEnabled = s.smartRoutingEnabled, qualityRetryEnabled = s.qualityRetryEnabled,
+            compareCandidatesEnabled = s.compareCandidatesEnabled, streamingOrchestrationEnabled = s.streamingOrchestrationEnabled,
+            quotaMonitoringEnabled = s.quotaMonitoringEnabled, providerBenchmarkEnabled = s.providerBenchmarkEnabled,
+            circuitBreakerEnabled = s.circuitBreakerEnabled, adaptiveRoutingEnabled = s.adaptiveRoutingEnabled,
+            benchmarkIntervalMs = s.benchmarkIntervalMs, hedgedFailoverEnabled = s.hedgedFailoverEnabled,
+            hedgeDelayMs = s.hedgeDelayMs
+        )
+        saveSttSettings(s.sttProvider, s.deepgramKey, s.openAiKey)
     }
 
     companion object {
