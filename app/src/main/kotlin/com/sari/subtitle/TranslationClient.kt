@@ -43,6 +43,8 @@ class TranslationClient(
             return OpenAiClient(apiKey, http).translate(text, source, target, context, quality)
         }
         val request = when (provider) {
+            TranslationProvider.OPENAI -> error("OPENAI handled above")
+            TranslationProvider.OMNIROUTE -> error("OMNIROUTE not yet supported")
             TranslationProvider.GROQ -> {
                 require(apiKey.isNotBlank()) { "أدخل مفتاح Groq API في الإعدادات." }
                 val system = buildGroqSystemPrompt(source, target, context)
@@ -119,6 +121,8 @@ class TranslationClient(
                     val raw = response.body?.string().orEmpty()
                     if (!response.isSuccessful) error("HTTP ${response.code}: ${raw.take(180)}")
                     val result = when (provider) {
+                        TranslationProvider.OPENAI -> error("OPENAI handled above")
+                        TranslationProvider.OMNIROUTE -> error("OMNIROUTE not yet supported")
                         TranslationProvider.GROQ -> JSONObject(raw).getJSONArray("choices").getJSONObject(0)
                             .getJSONObject("message").getString("content").trim()
                         TranslationProvider.GOOGLE -> JSONObject(raw).getJSONObject("data").getJSONArray("translations")

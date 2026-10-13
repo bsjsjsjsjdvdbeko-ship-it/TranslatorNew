@@ -14,8 +14,8 @@ import java.util.concurrent.TimeUnit
 
 /** Groq Speech-to-Text client. Returns segment timestamps when the API provides them. */
 class WhisperClient(private val apiKey: String, private val http: OkHttpClient = defaultClient()) : SttClient {
-    override suspend fun transcribe(audioFile: File, language: String = "ar", prompt: String = ""): String =
-        transcribeDetailed(audioFile, language, prompt).text
+    override suspend fun transcribe(audioFile: File, language: String, prompt: String): TranscriptResult =
+        transcribeDetailed(audioFile, language, prompt)
 
     suspend fun transcribeDetailed(audioFile: File, language: String = "ar", prompt: String = ""): TranscriptResult = withContext(Dispatchers.IO) {
         require(apiKey.isNotBlank()) { "أدخل مفتاح Groq API من الإعدادات." }

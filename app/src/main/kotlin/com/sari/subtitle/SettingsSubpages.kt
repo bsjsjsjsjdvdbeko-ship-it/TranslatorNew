@@ -182,7 +182,7 @@ abstract class SettingsSubpageBase : AppCompatActivity() {
         }
         if(page=="omniroute" && v[0].isNotBlank()) {
             val parsed = runCatching { Uri.parse(v[0]) }.getOrNull()
-            if (!android.util.Patterns.WEB_URL.matcher(v[0]).matches() || parsed?.scheme !in listOf("https", "http") || parsed.host.isNullOrBlank()) { toast("عنوان URL غير صالح؛ أدخل عنوان HTTP(S) كاملًا"); return }
+            if (!android.util.Patterns.WEB_URL.matcher(v[0]).matches() || parsed?.scheme !in listOf("https", "http") || parsed?.host.isNullOrBlank()) { toast("عنوان URL غير صالح؛ أدخل عنوان HTTP(S) كاملًا"); return }
         }
         if(page=="languages") {
             val languagePattern = Regex("(?i)^(auto|[a-z]{2,3}([_-][a-z]{2,4})?)$")
