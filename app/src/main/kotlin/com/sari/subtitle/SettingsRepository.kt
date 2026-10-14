@@ -3,6 +3,7 @@ package com.sari.subtitle
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -51,7 +52,10 @@ class SettingsRepository(context: Context) {
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
-    } catch (_: Exception) { null }
+    } catch (e: Exception) {
+        Log.e("SariTranslate", "Encrypted settings initialization failed: ${e.javaClass.simpleName}: ${e.message}", e)
+        null
+    }
 
     suspend fun save(
         provider: Int,
@@ -124,7 +128,7 @@ class SettingsRepository(context: Context) {
     }
 
     suspend fun load(): AppSettings = withContext(Dispatchers.IO) {
-        val p = prefs ?: return@withContext AppSettings()
+        val p = prefs ?: throw IllegalStateException("تعذر فتح الإعدادات المشفّرة. أعد فتح التطبيق؛ إذا استمرت المشكلة أعد حفظ مفاتيح API من صفحة الإعدادات.")
         val storedProvider = p.getInt("provider", PROVIDER_GROQ)
         // Stage 4 stored 0=Google and 1=MyMemory. Migrate once to Stage 5's 0=Groq, 1=Google, 2=MyMemory.
         val provider = if (p.getBoolean("providerSchemaV2", false)) storedProvider.coerceIn(0, PROVIDER_OPENAI)

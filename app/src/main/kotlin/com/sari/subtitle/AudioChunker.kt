@@ -1,6 +1,7 @@
 package com.sari.subtitle
 
 import android.os.SystemClock
+import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
 import java.util.ArrayDeque
@@ -43,8 +44,17 @@ class AudioChunker(context: android.content.Context, private val sampleRate: Int
                 }
                 val rms = kotlin.math.sqrt(energy / this.count)
                 if (rms >= RMS_THRESHOLD) {
-                    pending.addLast(AudioChunk(chunkFile, start, CHUNK_MS, ++sequence))
-                } else chunkFile.delete()
+                    val wav = SttDiagnostics.inspectWav(chunkFile)
+                    Log.d(TAG, "chunk created seq=${sequence + 1} size=${chunkFile.length()} samples=${this.count} rms=$rms wavValid=${wav.valid} dataBytes=${wav.dataBytes}")
+                    if (wav.valid) pending.addLast(AudioChunk(chunkFile, start, CHUNK_MS, ++sequence))
+                    else {
+                        Log.e(TAG, "Rejecting invalid WAV chunk: ${wav.problem}")
+                        chunkFile.delete()
+                    }
+                } else {
+                    Log.d(TAG, "chunk dropped as silence size=${chunkFile.length()} samples=${this.count} rms=$rms threshold=$RMS_THRESHOLD")
+                    chunkFile.delete()
+                }
 
                 System.arraycopy(buffer, chunkSamples - overlapSamples, buffer, 0, overlapSamples)
                 this.count = overlapSamples
@@ -88,6 +98,7 @@ class AudioChunker(context: android.content.Context, private val sampleRate: Int
     private fun writeShortLE(out: FileOutputStream, value: Int) { out.write(value and 0xff); out.write((value ushr 8) and 0xff) }
 
     companion object {
+        private const val TAG = "SariTranslate"
         const val CHUNK_MS = 2_000L
         const val OVERLAP_MS = 400L
         const val STEP_MS = CHUNK_MS - OVERLAP_MS

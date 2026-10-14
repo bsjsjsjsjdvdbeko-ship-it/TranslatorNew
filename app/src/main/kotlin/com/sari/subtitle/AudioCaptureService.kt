@@ -129,6 +129,7 @@ class AudioCaptureService : Service() {
             translationWorker = serviceScope.launch {
                 for (chunk in chunkQueue) {
                     try {
+                        Log.d("SariTranslate", "worker processing seq=${chunk.sequence} size=${chunk.file.length()}")
                         TranslationRepository(applicationContext).translateAudio(
                             chunk.file, chunk.startElapsedMs, chunk.durationMs
                         )
@@ -169,6 +170,7 @@ class AudioCaptureService : Service() {
                 Log.e(TAG, "Audio read failed", e); break
             }
             if (count > 0) {
+                Log.v(TAG, "AudioRecord.read samples=$count encoding=PCM_16BIT sampleRate=$SAMPLE_RATE channels=mono")
                 val speechPresent = isSpeech(samples, count)
                 if (speechPresent) {
                     lastSpeechAt = System.currentTimeMillis()
@@ -180,11 +182,15 @@ class AudioCaptureService : Service() {
                 chunker?.addSamples(samples, count)
                 while (running && chunker?.hasChunkReady() == true) {
                     val chunk = try { chunker?.getNextChunkInfo() } catch (_: Exception) { null } ?: break
+                    Log.d("SariTranslate", "capture chunk seq=${chunk.sequence} exists=${chunk.file.exists()} size=${chunk.file.length()} durationMs=${chunk.durationMs} startElapsedMs=${chunk.startElapsedMs}")
                     LiveSubtitleBus.markLatestCapture(chunk.startElapsedMs)
                     if (!chunkQueue.trySend(chunk).isSuccess) {
                         // Keep latency bounded: discard the older queued window and keep the newest one.
                         chunkQueue.tryReceive().getOrNull()?.file?.delete()
-                        if (!chunkQueue.trySend(chunk).isSuccess) chunk.file.delete()
+                        if (!chunkQueue.trySend(chunk).isSuccess) {
+                            Log.w("SariTranslate", "dropping chunk seq=${chunk.sequence}; queue remains full")
+                            chunk.file.delete()
+                        }
                     }
                 }
             } else if (count < 0) {

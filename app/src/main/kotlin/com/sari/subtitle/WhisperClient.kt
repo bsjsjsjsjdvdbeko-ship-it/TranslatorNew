@@ -1,5 +1,7 @@
 package com.sari.subtitle
 
+import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -19,9 +21,12 @@ class WhisperClient(private val apiKey: String, private val http: OkHttpClient =
 
     suspend fun transcribeDetailed(audioFile: File, language: String = "ar", prompt: String = ""): TranscriptResult = withContext(Dispatchers.IO) {
         require(apiKey.isNotBlank()) { "أدخل مفتاح Groq API من الإعدادات." }
-        require(audioFile.exists() && audioFile.length() > 0) { "الملف الصوتي فارغ." }
+        val wav = SttDiagnostics.inspectWav(audioFile)
+        Log.d(TAG, "Groq request file=${audioFile.name} size=${wav.sizeBytes} wavValid=${wav.valid} sampleRate=${wav.sampleRate} channels=${wav.channels} bits=${wav.bitsPerSample} dataBytes=${wav.dataBytes}")
+        require(wav.valid) { "ملف WAV غير صالح أو لا يحتوي بيانات صوتية: ${wav.problem ?: "تحقق من الالتقاط"}." }
+        val model = if (prompt.startsWith("[HIGH_ACCURACY]")) "whisper-large-v3" else "whisper-large-v3-turbo"
         val body = MultipartBody.Builder().setType(MultipartBody.FORM)
-            .addFormDataPart("model", if (prompt.startsWith("[HIGH_ACCURACY]")) "whisper-large-v3" else "whisper-large-v3-turbo")
+            .addFormDataPart("model", model)
             .addFormDataPart("response_format", "verbose_json")
             .addFormDataPart("temperature", "0")
             .apply { if (prompt.isNotBlank()) addFormDataPart("prompt", prompt.take(3_000)) }
@@ -63,21 +68,37 @@ class WhisperClient(private val apiKey: String, private val http: OkHttpClient =
             try {
                 http.newCall(request).execute().use { response ->
                     val raw = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) error("فشل Groq (${response.code}): ${raw.take(180)}")
+                    if (!response.isSuccessful) {
+                        val failure = SttHttpException(response.code, raw, "Groq")
+                        Log.e(TAG, "Groq HTTP ${response.code}: ${raw.take(400)}")
+                        if (response.code !in listOf(408, 429) && response.code !in 500..599) throw failure
+                        throw failure
+                    }
+                    Log.d(TAG, "Groq HTTP ${response.code}; responseBytes=${raw.length}")
                     return parse(raw)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 last = e
+                Log.e(TAG, "Groq attempt ${i + 1}/3 failed: ${SttDiagnostics.messageFor(e)}", e)
+                val httpError = generateSequence(e) { it.cause }.filterIsInstance<SttHttpException>().firstOrNull()
+                if (httpError != null && httpError.statusCode !in listOf(408, 429) && httpError.statusCode !in 500..599) {
+                    throw IllegalStateException(SttDiagnostics.messageFor(e), e)
+                }
                 if (i < 2) delay(500L * (i + 1))
             }
         }
-        throw IllegalStateException("تعذّر الاتصال بخدمة تحويل الصوت بعد 3 محاولات. تحقق من الإنترنت والمفتاح.", last)
+        val failure = last ?: IllegalStateException("Unknown Groq error")
+        throw IllegalStateException(SttDiagnostics.messageFor(failure), failure)
     }
 
     companion object {
+        private const val TAG = "SariTranslate"
         fun defaultClient() = OkHttpClient.Builder()
-            .connectTimeout(20, TimeUnit.SECONDS)
+            .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(90, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
             .callTimeout(120, TimeUnit.SECONDS)
             .build()
     }

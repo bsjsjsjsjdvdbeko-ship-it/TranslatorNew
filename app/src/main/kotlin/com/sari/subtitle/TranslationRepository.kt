@@ -13,12 +13,23 @@ class TranslationRepository(private val context: Context) {
     private val episodeContext by lazy { EpisodeContextStore(context) }
 
     suspend fun translateAudio(audioFile: File, capturedAtElapsedMs: Long = android.os.SystemClock.elapsedRealtime(), durationMs: Long = AudioChunker.CHUNK_MS): TranslationEntity = withContext(Dispatchers.IO) {
+        Log.d(TAG, "=== Start ===")
+        Log.d(TAG, "audioFile.exists=${audioFile.exists()}")
+        Log.d(TAG, "audioFile.size=${audioFile.length()}")
+        Log.d(TAG, "audioFile.absolutePath=${audioFile.absolutePath}")
+        SttDiagnostics.logWav(audioFile, "TranslationRepository input")
         val settings = SettingsRepository(context).load()
+        Log.d(TAG, "settings.provider=${settings.provider}")
+        Log.d(TAG, "settings.sttProvider=${settings.sttProvider}")
+        Log.d(TAG, "settings.speechLanguage=${settings.speechLanguage}")
+        Log.d(TAG, "speechKey.length=${settings.speechKey.length}")
+        Log.d(TAG, "deepgramKey.length=${settings.deepgramKey.length}")
+        Log.d(TAG, "omniRouteKey.length=${settings.omniRouteKey.length}")
 
         val preContext = if (settings.contextAwareTranslation) episodeContext.snapshot() else TranslationContext()
         val whisperPrompt = buildWhisperPrompt(settings, preContext)
         val configuredSttProvider = settings.sttProvider.trim().lowercase()
-        val whisperResult = if (settings.provider == SettingsRepository.PROVIDER_OMNIROUTE) {
+        val whisperResult = try { if (settings.provider == SettingsRepository.PROVIDER_OMNIROUTE) {
             Log.i(TAG, "STT route=OmniRoute; configured local STT provider is ignored while translation provider is OmniRoute")
             if (settings.smartRoutingEnabled || settings.adaptiveRoutingEnabled) {
                 AiOrchestrator(context).transcribe(
@@ -67,7 +78,13 @@ class TranslationRepository(private val context: Context) {
                 }
                 else -> error("مزود STT غير معروف: '${settings.sttProvider}'. افتح إعدادات STT واختر Deepgram Nova-3 أو Groq Whisper ثم احفظ.")
             }
+        } } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "STT failed; route=${if (settings.provider == SettingsRepository.PROVIDER_OMNIROUTE) "OmniRoute" else configuredSttProvider}; ${SttDiagnostics.messageFor(e)}", e)
+            throw IllegalStateException(SttDiagnostics.messageFor(e), e)
         }
+        Log.d(TAG, "STT success; textChars=${whisperResult.text.length}; segments=${whisperResult.segments.size}")
         val speech = whisperResult.text.trim()
         val sourceLanguage = settings.sourceLanguage.ifBlank { "auto" }
         val targetLanguage = settings.targetLanguage.ifBlank { "ar" }
