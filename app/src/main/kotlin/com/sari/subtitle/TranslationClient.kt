@@ -74,6 +74,7 @@ class TranslationClient(
                 val e = if (email.isBlank()) "" else "&de=" + URLEncoder.encode(email, "UTF-8")
                 Request.Builder().url("https://api.mymemory.translated.net/get?q=$q&langpair=$pair$e").get().build()
             }
+            else -> error("مزود الترجمة غير مدعوم: $provider")
         }
         return executeTextRequest(request)
     }

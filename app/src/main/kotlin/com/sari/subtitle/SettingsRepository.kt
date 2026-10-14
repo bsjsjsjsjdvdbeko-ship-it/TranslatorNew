@@ -208,6 +208,10 @@ class SettingsRepository(context: Context) {
         const val PROVIDER_MYMEMORY = 2
         const val PROVIDER_OMNIROUTE = 3
         const val PROVIDER_OPENAI = 4
+        const val STT_GROQ = 0
+        const val STT_DEEPGRAM = 1 // Nova-2; retained for existing settings
+        const val STT_VOSK = 2
+        const val STT_DEEPGRAM_NOVA3 = 3
         const val QUALITY_FAST = 0
         const val QUALITY_BALANCED = 1
         const val QUALITY_HUMAN = 2

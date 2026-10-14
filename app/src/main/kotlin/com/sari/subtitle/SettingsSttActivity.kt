@@ -23,7 +23,14 @@ class SettingsSttActivity : AppCompatActivity() {
     private lateinit var provider: MaterialAutoCompleteTextView
     private lateinit var deepgramKey: TextInputEditText
     private lateinit var openAiKey: TextInputEditText
-    private val providers by lazy { listOf(getString(R.string.stt_model_groq), getString(R.string.stt_model_deepgram), getString(R.string.stt_model_vosk)) }
+    private val providers by lazy {
+        listOf(
+            getString(R.string.stt_model_groq),
+            getString(R.string.stt_model_deepgram_nova2),
+            getString(R.string.stt_model_deepgram_nova3),
+            getString(R.string.stt_model_vosk)
+        )
+    }
     private val http by lazy { OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,7 +50,15 @@ class SettingsSttActivity : AppCompatActivity() {
         findViewById<MaterialButton>(R.id.downloadVoskButton).setOnClickListener { downloadVosk() }
         lifecycleScope.launch {
             val settings = SettingsRepository(this@SettingsSttActivity).load()
-            provider.setText(when (settings.sttProvider) { "deepgram" -> providers[1]; "vosk" -> providers[2]; else -> providers[0] }, false)
+            provider.setText(
+                when (settings.sttProvider) {
+                    "deepgram", "deepgram-nova2" -> providers[1]
+                    "deepgram-nova3" -> providers[2]
+                    "vosk" -> providers[3]
+                    else -> providers[0]
+                },
+                false
+            )
             updateVoskStatus()
             deepgramKey.setText(settings.deepgramKey)
             openAiKey.setText(settings.openAiKey)
@@ -52,8 +67,9 @@ class SettingsSttActivity : AppCompatActivity() {
 
     private fun save() {
         val selected = when (provider.text.toString()) {
-            providers[1] -> "deepgram"
-            providers[2] -> "vosk"
+            providers[1] -> "deepgram" // compatibility alias for Nova-2
+            providers[2] -> "deepgram-nova3"
+            providers[3] -> "vosk"
             else -> "groq"
         }
         lifecycleScope.launch {

@@ -128,14 +128,26 @@ abstract class SettingsSubpageBase : AppCompatActivity() {
         }
         fields.forEachIndexed { i, f -> val label = labels.getOrElse(i) { "" }; layouts.getOrNull(i)?.hint = label; f.hint = label }
         if (page == "keys") {
-            (fields[0] as? MaterialAutoCompleteTextView)?.apply {
-                setAdapter(android.widget.ArrayAdapter(this@SettingsSubpageBase, android.R.layout.simple_dropdown_item_1line,
-                    listOf("Groq", "Google Cloud Translation", "MyMemory", "OmniRoute", "OpenAI")))
-                inputType = android.text.InputType.TYPE_NULL
-                isFocusable = false
-                isClickable = true
-                setOnClickListener { showDropDown() }
-                setOnFocusChangeListener { _, hasFocus -> if (hasFocus) showDropDown() }
+            // The view is looked up only after setContentView() in initializeSettingsPage().
+            // Do not rely on fields[0] being castable: bind the concrete layout ID directly.
+            val providerSpinner = findViewById<MaterialAutoCompleteTextView>(R.id.providerSpinner)
+            val translationProviders = listOf(
+                "Groq", "Google Cloud Translation", "MyMemory", "OmniRoute", "OpenAI"
+            )
+            providerSpinner.setAdapter(
+                android.widget.ArrayAdapter(
+                    this@SettingsSubpageBase,
+                    android.R.layout.simple_dropdown_item_1line,
+                    translationProviders
+                )
+            )
+            providerSpinner.keyListener = null
+            providerSpinner.inputType = android.text.InputType.TYPE_NULL
+            providerSpinner.isFocusable = false
+            providerSpinner.isClickable = true
+            providerSpinner.setOnClickListener { providerSpinner.showDropDown() }
+            providerSpinner.setOnFocusChangeListener { _, hasFocus ->
+                if (hasFocus) providerSpinner.showDropDown()
             }
             layouts.getOrNull(1)?.endIconMode = TextInputLayout.END_ICON_PASSWORD_TOGGLE
             layouts.getOrNull(2)?.endIconMode = TextInputLayout.END_ICON_PASSWORD_TOGGLE

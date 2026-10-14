@@ -11,13 +11,23 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 /** Deepgram Nova-2 file-based STT adapter. It is not advertised as realtime streaming. */
-class DeepgramClient(private val apiKey: String, private val http: OkHttpClient = defaultClient()) : SttClient {
+class DeepgramClient(
+    private val apiKey: String,
+    private val http: OkHttpClient = defaultClient(),
+    private val model: String = "nova-2"
+) : SttClient {
     override suspend fun transcribe(audioFile: File, language: String, prompt: String): TranscriptResult = withContext(Dispatchers.IO) {
         require(apiKey.isNotBlank()) { "أدخل مفتاح Deepgram API في الإعدادات." }
         require(audioFile.exists() && audioFile.length() > 0) { "الملف الصوتي فارغ." }
         val params = buildString {
-            append("model=nova-2&smart_format=true")
-            if (language.isNotBlank() && language != "auto") append("&language=").append(language)
+            val selectedModel = if (model.equals("nova-3", ignoreCase = true)) "nova-3" else "nova-2"
+            append("model=").append(java.net.URLEncoder.encode(selectedModel, "UTF-8"))
+            append("&smart_format=true")
+            // Nova-3 supports multilingual detection. "ar" can be requested explicitly;
+            // "auto" omits language so Deepgram can detect it.
+            if (language.isNotBlank() && language != "auto") {
+                append("&language=").append(java.net.URLEncoder.encode(language, "UTF-8"))
+            }
         }
         val request = Request.Builder()
             .url("https://api.deepgram.com/v1/listen?$params")

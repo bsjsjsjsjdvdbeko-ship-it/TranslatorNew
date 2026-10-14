@@ -40,7 +40,10 @@ class TranslationRepository(private val context: Context) {
             }
         } else {
             when (settings.sttProvider) {
-                "deepgram" -> DeepgramClient(settings.deepgramKey).transcribe(audioFile, settings.speechLanguage, whisperPrompt)
+                "deepgram-nova3" -> DeepgramClient(settings.deepgramKey, model = "nova-3")
+                    .transcribe(audioFile, settings.speechLanguage, whisperPrompt)
+                "deepgram", "deepgram-nova2" -> DeepgramClient(settings.deepgramKey, model = "nova-2")
+                    .transcribe(audioFile, settings.speechLanguage, whisperPrompt)
                 "vosk" -> {
                     val modelsRoot = File(context.filesDir, "vosk-models")
                     val modelDir = modelsRoot.listFiles()?.firstOrNull {
