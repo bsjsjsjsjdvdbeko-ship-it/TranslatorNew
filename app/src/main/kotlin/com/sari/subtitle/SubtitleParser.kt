@@ -1,5 +1,11 @@
 package com.sari.subtitle
 
+data class SubtitleCue(
+    val startMs: Long,
+    val endMs: Long,
+    val text: String
+)
+
 object SubtitleParser {
     fun parse(content: String): List<SubtitleCue> {
         val normalized = content.removePrefix("\uFEFF").replace("\r\n", "\n").replace('\r', '\n')
