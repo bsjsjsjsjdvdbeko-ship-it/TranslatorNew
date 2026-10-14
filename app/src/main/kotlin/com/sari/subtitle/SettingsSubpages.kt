@@ -218,7 +218,15 @@ abstract class SettingsSubpageBase : AppCompatActivity() {
     }
     private fun populate() {
         when(page) {
-            "keys" -> { fields[0].setText(listOf("Groq","Google Cloud Translation","MyMemory","OmniRoute","OpenAI").getOrElse(current.provider){"Groq"});fields[1].setText(current.speechKey);fields[2].setText(current.translationKey);fields[3].setText(current.myMemoryEmail) }
+            "keys" -> {
+                val items = listOf("Groq","Google Cloud Translation","MyMemory","OmniRoute","OpenAI")
+                val selected = items.getOrElse(current.provider.coerceIn(0,4)){"Groq"}
+                (fields[0] as? MaterialAutoCompleteTextView)?.setText(selected, false) 
+                    ?: fields[0].setText(selected)
+                fields[1].setText(current.speechKey)
+                fields[2].setText(current.translationKey)
+                fields[3].setText(current.myMemoryEmail)
+            }
             "languages" -> { fields[0].setText(current.speechLanguage);fields[1].setText(current.sourceLanguage);fields[2].setText(current.targetLanguage) }
             "quality" -> { fields[0].setText(listOf("Fast","Balanced","Human Quality")[current.translationQuality.coerceIn(0,2)]) }
             "context" -> { fields[0].setText(current.glossary);fields[1].setText(current.contextPrompt);switches[0].isChecked=current.contextAwareTranslation;switches[1].isChecked=current.translationMemoryEnabled }
