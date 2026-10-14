@@ -82,7 +82,7 @@ class WhisperClient(private val apiKey: String, private val http: OkHttpClient =
             } catch (e: Exception) {
                 last = e
                 Log.e(TAG, "Groq attempt ${i + 1}/3 failed: ${SttDiagnostics.messageFor(e)}", e)
-                val httpError = generateSequence(e) { it.cause }.filterIsInstance<SttHttpException>().firstOrNull()
+                val httpError = generateSequence<Throwable>(e) { it.cause }.filterIsInstance<SttHttpException>().firstOrNull()
                 if (httpError != null && httpError.statusCode !in listOf(408, 429) && httpError.statusCode !in 500..599) {
                     throw IllegalStateException(SttDiagnostics.messageFor(e), e)
                 }
