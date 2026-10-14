@@ -132,7 +132,10 @@ abstract class SettingsSubpageBase : AppCompatActivity() {
                 setAdapter(android.widget.ArrayAdapter(this@SettingsSubpageBase, android.R.layout.simple_dropdown_item_1line,
                     listOf("Groq", "Google Cloud Translation", "MyMemory", "OmniRoute", "OpenAI")))
                 inputType = android.text.InputType.TYPE_NULL
+                isFocusable = false
+                isClickable = true
                 setOnClickListener { showDropDown() }
+                setOnFocusChangeListener { _, hasFocus -> if (hasFocus) showDropDown() }
             }
             layouts.getOrNull(1)?.endIconMode = TextInputLayout.END_ICON_PASSWORD_TOGGLE
             layouts.getOrNull(2)?.endIconMode = TextInputLayout.END_ICON_PASSWORD_TOGGLE
