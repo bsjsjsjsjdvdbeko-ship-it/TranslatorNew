@@ -2,6 +2,7 @@ package com.sari.subtitle
 
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -16,7 +17,9 @@ class TranslationRepository(private val context: Context) {
 
         val preContext = if (settings.contextAwareTranslation) episodeContext.snapshot() else TranslationContext()
         val whisperPrompt = buildWhisperPrompt(settings, preContext)
+        val configuredSttProvider = settings.sttProvider.trim().lowercase()
         val whisperResult = if (settings.provider == SettingsRepository.PROVIDER_OMNIROUTE) {
+            Log.i(TAG, "STT route=OmniRoute; configured local STT provider is ignored while translation provider is OmniRoute")
             if (settings.smartRoutingEnabled || settings.adaptiveRoutingEnabled) {
                 AiOrchestrator(context).transcribe(
                     audioFile = audioFile,
@@ -39,19 +42,30 @@ class TranslationRepository(private val context: Context) {
                 )
             }
         } else {
-            when (settings.sttProvider) {
-                "deepgram-nova3" -> DeepgramClient(settings.deepgramKey, model = "nova-3")
-                    .transcribe(audioFile, settings.speechLanguage, whisperPrompt)
-                "deepgram", "deepgram-nova2" -> DeepgramClient(settings.deepgramKey, model = "nova-2")
-                    .transcribe(audioFile, settings.speechLanguage, whisperPrompt)
+            when (configuredSttProvider) {
+                "deepgram-nova3", "deepgram-nova-3", "deepgram_nova3", "nova-3" -> {
+                    Log.i(TAG, "STT route=Deepgram Nova-3")
+                    DeepgramClient(settings.deepgramKey, model = "nova-3")
+                        .transcribe(audioFile, settings.speechLanguage, whisperPrompt)
+                }
+                "deepgram", "deepgram-nova2", "deepgram-nova-2", "nova-2" -> {
+                    Log.i(TAG, "STT route=Deepgram Nova-2")
+                    DeepgramClient(settings.deepgramKey, model = "nova-2")
+                        .transcribe(audioFile, settings.speechLanguage, whisperPrompt)
+                }
+                "groq", "whisper", "groq-whisper" -> {
+                    Log.i(TAG, "STT route=Groq Whisper")
+                    WhisperClient(settings.speechKey).transcribeDetailed(audioFile, settings.speechLanguage, whisperPrompt)
+                }
                 "vosk" -> {
+                    Log.i(TAG, "STT route=Vosk")
                     val modelsRoot = File(context.filesDir, "vosk-models")
                     val modelDir = modelsRoot.listFiles()?.firstOrNull {
                         it.isDirectory && (it.name.startsWith("vosk-model-ar-mgb2") || File(it, "am").exists())
                     } ?: error("نموذج Vosk العربي غير موجود. افتح إعدادات STT وحمّل النموذج أولاً.")
                     VoskClient(modelDir).transcribe(audioFile, settings.speechLanguage, whisperPrompt)
                 }
-                else -> WhisperClient(settings.speechKey).transcribeDetailed(audioFile, settings.speechLanguage, whisperPrompt)
+                else -> error("مزود STT غير معروف: '${settings.sttProvider}'. افتح إعدادات STT واختر Deepgram Nova-3 أو Groq Whisper ثم احفظ.")
             }
         }
         val speech = whisperResult.text.trim()
@@ -90,11 +104,11 @@ class TranslationRepository(private val context: Context) {
                         speechProfile = SpeechProfile(wordsPerSecond, features.noiseLevel, features)
                     ).text
                 } else {
-                    OmniRouteClient(settings.omniRouteBaseUrl, settings.omniRouteKey).translate(
+                    translateOmniRouteWithFallback(
+                        settings = settings,
                         text = speech,
                         source = sourceLanguage,
                         target = targetLanguage,
-                        model = settings.omniRouteTranslationModel,
                         context = contextPrompt,
                         quality = quality
                     )
@@ -143,6 +157,46 @@ class TranslationRepository(private val context: Context) {
         entity
     }
 
+
+    /**
+     * Even with adaptive routing disabled, try configured translation models in order.
+     * This keeps the simple/manual mode resilient without enabling background benchmarks.
+     */
+    private suspend fun translateOmniRouteWithFallback(
+        settings: AppSettings,
+        text: String,
+        source: String,
+        target: String,
+        context: TranslationContext,
+        quality: TranslationQuality
+    ): String {
+        val candidates = omniRouteTranslationCandidates(
+            settings.omniRouteTranslationModel,
+            settings.omniRouteTranslationModels
+        )
+        val client = OmniRouteClient(settings.omniRouteBaseUrl, settings.omniRouteKey)
+        var lastFailure: Throwable? = null
+        candidates.forEachIndexed { index, model ->
+            try {
+                return client.translate(
+                    text = text,
+                    source = source,
+                    target = target,
+                    model = model,
+                    context = context,
+                    quality = quality
+                )
+            } catch (failure: Exception) {
+                lastFailure = failure
+                if (index < candidates.lastIndex) kotlinx.coroutines.delay(250L * (index + 1))
+            }
+        }
+        throw IllegalStateException(
+            "فشلت ترجمة OmniRoute عبر جميع النماذج المحددة: ${candidates.joinToString()}",
+            lastFailure
+        )
+    }
+
     private fun buildWhisperPrompt(settings: AppSettings, context: TranslationContext): String {
         val glossary = (context.glossary.entries.map { "${it.key}=${it.value}" } + settings.glossary.lines().map { it.trim() }.filter { it.isNotBlank() }).joinToString(", ")
         val recent = context.previousSegments.takeLast(4).joinToString(" | ")
@@ -158,4 +212,5 @@ class TranslationRepository(private val context: Context) {
     fun resetEpisodeContext() = episodeContext.clearSession()
 
     suspend fun clearTranslationMemory() = withContext(Dispatchers.IO) { memory.clear() }
+    companion object { private const val TAG = "SariSTTRoute" }
 }

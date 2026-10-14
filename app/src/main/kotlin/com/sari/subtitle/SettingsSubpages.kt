@@ -218,15 +218,7 @@ abstract class SettingsSubpageBase : AppCompatActivity() {
     }
     private fun populate() {
         when(page) {
-            "keys" -> {
-                val items = listOf("Groq","Google Cloud Translation","MyMemory","OmniRoute","OpenAI")
-                val selected = items.getOrElse(current.provider.coerceIn(0,4)){"Groq"}
-                (fields[0] as? MaterialAutoCompleteTextView)?.setText(selected, false) 
-                    ?: fields[0].setText(selected)
-                fields[1].setText(current.speechKey)
-                fields[2].setText(current.translationKey)
-                fields[3].setText(current.myMemoryEmail)
-            }
+            "keys" -> { fields[0].setText(listOf("Groq","Google Cloud Translation","MyMemory","OmniRoute","OpenAI").getOrElse(current.provider){"Groq"});fields[1].setText(current.speechKey);fields[2].setText(current.translationKey);fields[3].setText(current.myMemoryEmail) }
             "languages" -> { fields[0].setText(current.speechLanguage);fields[1].setText(current.sourceLanguage);fields[2].setText(current.targetLanguage) }
             "quality" -> { fields[0].setText(listOf("Fast","Balanced","Human Quality")[current.translationQuality.coerceIn(0,2)]) }
             "context" -> { fields[0].setText(current.glossary);fields[1].setText(current.contextPrompt);switches[0].isChecked=current.contextAwareTranslation;switches[1].isChecked=current.translationMemoryEnabled }
@@ -264,7 +256,33 @@ abstract class SettingsSubpageBase : AppCompatActivity() {
             toast(getString(R.string.settings_saved)); finish()
         } catch(e:Exception) { toast(e.message ?: getString(R.string.settings_save_failed)) } }
     }
-    private fun testOmni() { val u=fields[0].text?.toString()?.trim().orEmpty(); val k=fields[1].text?.toString()?.trim().orEmpty(); if(!u.startsWith("https://")||k.isBlank()){toast("أدخل Base URL آمنًا ومفتاح API");return}; lifecycleScope.launch { try { val r=OmniRouteClient(u,k).healthCheck(); toast(if(r.reachable) "نجح الاتصال؛ ${r.modelCount} نموذجًا، ${r.latencyMs}ms" else "فشل الاتصال: ${r.error}") } catch(e:Exception) { toast("فشل الاتصال: ${e.message}") } } }
+    private fun testOmni() {
+        val url = fields[0].text?.toString()?.trim().orEmpty()
+        val key = fields[1].text?.toString()?.trim().orEmpty()
+        val uri = runCatching { Uri.parse(url) }.getOrNull()
+        if (uri == null || uri.scheme != "https" || uri.host.isNullOrBlank() || key.isBlank()) {
+            toast("أدخل عنوان HTTPS كاملاً ومفتاح OmniRoute API")
+            return
+        }
+        lifecycleScope.launch {
+            val button = findViewById<MaterialButton>(R.id.testOmniRouteButton)
+            button.isEnabled = false
+            button.text = "جارٍ اختبار الاتصال…"
+            try {
+                val result = OmniRouteClient(url, key).healthCheck()
+                toast(if (result.reachable) {
+                    "نجح الاتصال بـ OmniRoute؛ ${result.modelCount} نموذجًا متاحًا، زمن الاستجابة ${result.latencyMs}ms"
+                } else {
+                    "فشل اتصال OmniRoute: ${result.error ?: "تحقق من العنوان والمفتاح والشبكة"}"
+                })
+            } catch (e: Exception) {
+                toast("فشل اتصال OmniRoute: ${e.message ?: e.javaClass.simpleName}")
+            } finally {
+                button.isEnabled = true
+                button.text = "اختبار اتصال OmniRoute"
+            }
+        }
+    }
     private fun open(url:String) { try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch(e:Exception) { toast("تعذر فتح الرابط") } }
     private fun toast(m:String) = Toast.makeText(this,m,Toast.LENGTH_LONG).show()
 }
