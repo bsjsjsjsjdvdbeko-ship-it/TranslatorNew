@@ -89,7 +89,11 @@ class TranslationRepository(private val context: Context) {
         val speech = whisperResult.text.trim()
         val sourceLanguage = settings.sourceLanguage.ifBlank { "auto" }
         val targetLanguage = settings.targetLanguage.ifBlank { "ar" }
-        if (speech.isBlank() || !deduplicator.shouldTranslate(speech)) {
+        // Very short one-character detections (for example "N") are commonly noise or a
+        // chunk-boundary artifact. Do not translate/publish them as subtitles.
+        val onlyOneLetter = speech.matches(Regex("(?iu)^[\\p{L}]$"))
+        val punctuationOnly = speech.isNotEmpty() && speech.none { it.isLetterOrDigit() }
+        if (speech.isBlank() || onlyOneLetter || punctuationOnly || !deduplicator.shouldTranslate(speech)) {
             return@withContext TranslationEntity(
                 sourceText = speech, translatedText = "", sourceLanguage = settings.sourceLanguage,
                 targetLanguage = settings.targetLanguage, createdAt = System.currentTimeMillis()

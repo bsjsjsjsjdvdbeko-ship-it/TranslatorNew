@@ -72,7 +72,19 @@ abstract class SettingsSubpageBase : AppCompatActivity() {
         } else {
             throw IllegalStateException("زر الحفظ غير موجود في صفحة ${pageTitle()} (ID=$saveId)")
         }
-        if (page == "keys") runCatching { findViewById<MaterialButton>(R.id.getGroqKeyButton) }.getOrNull()?.setOnClickListener { open("https://console.groq.com/keys") }
+        if (page == "keys") {
+            runCatching { findViewById<MaterialButton>(R.id.getGroqKeyButton) }.getOrNull()?.setOnClickListener { open("https://console.groq.com/keys") }
+            runCatching { findViewById<MaterialButton>(R.id.getDeepgramKeyUnifiedButton) }.getOrNull()?.setOnClickListener { open("https://console.deepgram.com/") }
+            runCatching { findViewById<MaterialButton>(R.id.testDeepgramKeyUnifiedButton) }.getOrNull()?.setOnClickListener { testDeepgramUnified() }
+            val sttSpinner = findViewById<MaterialAutoCompleteTextView>(R.id.sttProviderUnifiedSpinner)
+            sttSpinner.setAdapter(android.widget.ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, listOf("Groq Whisper", "Deepgram Nova-2", "Deepgram Nova-3", "Vosk (محلي)")))
+            sttSpinner.keyListener = null
+            sttSpinner.inputType = android.text.InputType.TYPE_NULL
+            sttSpinner.isFocusable = false
+            sttSpinner.isClickable = true
+            sttSpinner.setOnClickListener { sttSpinner.showDropDown() }
+            sttSpinner.setOnFocusChangeListener { _, focused -> if (focused) sttSpinner.showDropDown() }
+        }
         if (page == "omniroute") runCatching { findViewById<MaterialButton>(R.id.testOmniRouteButton) }.getOrNull()?.setOnClickListener { testOmni() }
         if (page == "orchestration") runCatching { findViewById<MaterialButton>(R.id.providerDashboardButton) }.getOrNull()?.setOnClickListener { runCatching { startActivity(Intent(this, ProviderDashboardActivity::class.java)) }.onFailure { toast("تعذر فتح لوحة مزودي الذكاء الاصطناعي: ${it.message ?: "خطأ غير معروف"}") } }
         configure()
@@ -218,7 +230,14 @@ abstract class SettingsSubpageBase : AppCompatActivity() {
     }
     private fun populate() {
         when(page) {
-            "keys" -> { fields[0].setText(listOf("Groq","Google Cloud Translation","MyMemory","OmniRoute","OpenAI").getOrElse(current.provider){"Groq"});fields[1].setText(current.speechKey);fields[2].setText(current.translationKey);fields[3].setText(current.myMemoryEmail) }
+            "keys" -> {
+                fields[0].setText(listOf("Groq","Google Cloud Translation","MyMemory","OmniRoute","OpenAI").getOrElse(current.provider){"Groq"})
+                fields[1].setText(current.speechKey); fields[2].setText(current.translationKey); fields[3].setText(current.myMemoryEmail)
+                findViewById<MaterialAutoCompleteTextView>(R.id.sttProviderUnifiedSpinner).setText(when(current.sttProvider) { "deepgram", "deepgram-nova2" -> "Deepgram Nova-2"; "deepgram-nova3", "deepgram_nova3" -> "Deepgram Nova-3"; "vosk" -> "Vosk (محلي)"; else -> "Groq Whisper" }, false)
+                findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.deepgramKeyUnifiedInput).setText(current.deepgramKey)
+                findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.openAiKeyUnifiedInput).setText(current.openAiKey)
+                findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.omniRouteKeyUnifiedInput).setText(current.omniRouteKey)
+            }
             "languages" -> { fields[0].setText(current.speechLanguage);fields[1].setText(current.sourceLanguage);fields[2].setText(current.targetLanguage) }
             "quality" -> { fields[0].setText(listOf("Fast","Balanced","Human Quality")[current.translationQuality.coerceIn(0,2)]) }
             "context" -> { fields[0].setText(current.glossary);fields[1].setText(current.contextPrompt);switches[0].isChecked=current.contextAwareTranslation;switches[1].isChecked=current.translationMemoryEnabled }
@@ -231,7 +250,17 @@ abstract class SettingsSubpageBase : AppCompatActivity() {
     private fun savePage() {
         val v=fields.map { it.text?.toString()?.trim().orEmpty() }
         current=when(page) {
-            "keys" -> current.copy(provider=when(v[0]){"Google Cloud Translation"->1;"MyMemory"->2;"OmniRoute"->3;"OpenAI"->4;else->0},speechKey=v[1],translationKey=v[2],myMemoryEmail=v[3])
+            "keys" -> {
+                val sttChoice = findViewById<MaterialAutoCompleteTextView>(R.id.sttProviderUnifiedSpinner).text.toString()
+                val sttValue = when (sttChoice) { "Deepgram Nova-2" -> "deepgram-nova2"; "Deepgram Nova-3" -> "deepgram-nova3"; "Vosk (محلي)" -> "vosk"; "Groq Whisper" -> "groq"; else -> { toast("اختر مزوّد التعرّف على الكلام من القائمة"); return } }
+                current.copy(
+                    provider=when(v[0]){"Google Cloud Translation"->1;"MyMemory"->2;"OmniRoute"->3;"OpenAI"->4;else->0},
+                    speechKey=v[1], translationKey=v[2], myMemoryEmail=v[3], sttProvider=sttValue,
+                    deepgramKey=findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.deepgramKeyUnifiedInput).text?.toString()?.trim().orEmpty(),
+                    openAiKey=findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.openAiKeyUnifiedInput).text?.toString()?.trim().orEmpty(),
+                    omniRouteKey=findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.omniRouteKeyUnifiedInput).text?.toString()?.trim().orEmpty()
+                )
+            }
             "languages" -> current.copy(speechLanguage=v[0].ifBlank{"auto"},sourceLanguage=v[1].ifBlank{"auto"},targetLanguage=v[2].ifBlank{"ar"})
             "quality" -> current.copy(translationQuality=when(v[0].lowercase()){"fast","سريع"->0;"balanced","متوازن"->1;else->2})
             "context" -> current.copy(glossary=v[0],contextPrompt=v[1],contextAwareTranslation=switches[0].isChecked,translationMemoryEnabled=switches[1].isChecked)
@@ -250,12 +279,37 @@ abstract class SettingsSubpageBase : AppCompatActivity() {
             if (v[2].equals("auto", true)) { toast("لغة الترجمة الهدف لا يمكن أن تكون auto؛ اختر لغة محددة مثل ar."); return }
         }
         if(page=="keys" && v[0] !in listOf("Groq","Google Cloud Translation","MyMemory","OmniRoute","OpenAI")) { toast("اختر مزوّد ترجمة من القيم المعروفة"); return }
+        if (page == "keys" && current.sttProvider.startsWith("deepgram") && current.deepgramKey.isBlank()) { toast("أدخل مفتاح Deepgram أو اختر Groq Whisper"); return }
+        if (page == "keys" && current.provider == SettingsRepository.PROVIDER_OMNIROUTE && (current.omniRouteKey.isBlank() || current.omniRouteBaseUrl.isBlank())) { toast("مزوّد OmniRoute يحتاج عنوان Base URL ومفتاح API؛ أكمل عنوانه من صفحة OmniRoute"); return }
         lifecycleScope.launch { try {
             s.saveSnapshot(current)
             if (page == "appearance") startService(Intent(this@SettingsSubpageBase, OverlayService::class.java).setAction(OverlayService.ACTION_APPLY_SETTINGS))
             toast(getString(R.string.settings_saved)); finish()
         } catch(e:Exception) { toast(e.message ?: getString(R.string.settings_save_failed)) } }
     }
+    private fun testDeepgramUnified() {
+        val key = findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.deepgramKeyUnifiedInput).text?.toString()?.trim().orEmpty()
+        if (key.isBlank()) { toast("أدخل مفتاح Deepgram أولاً"); return }
+        lifecycleScope.launch {
+            val button = findViewById<MaterialButton>(R.id.testDeepgramKeyUnifiedButton)
+            button.isEnabled = false
+            button.text = "جارٍ اختبار Deepgram…"
+            try {
+                val code = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    okhttp3.OkHttpClient.Builder().connectTimeout(12, java.util.concurrent.TimeUnit.SECONDS).readTimeout(12, java.util.concurrent.TimeUnit.SECONDS).build()
+                        .newCall(okhttp3.Request.Builder().url("https://api.deepgram.com/v1/projects").header("Authorization", "Token $key").get().build())
+                        .execute().use { it.code }
+                }
+                toast(if (code in 200..299) "نجح اختبار مفتاح Deepgram (HTTP $code). هذا يختبر المصادقة فقط، وليس جودة تفريغ الصوت." else "فشل اختبار Deepgram: HTTP $code. راجع المفتاح وصلاحيات الحساب.")
+            } catch (e: Exception) {
+                toast("تعذر الاتصال بـ Deepgram: ${e.javaClass.simpleName}. تحقق من الإنترنت أو VPN.")
+            } finally {
+                button.isEnabled = true
+                button.text = "اختبار اتصال Deepgram"
+            }
+        }
+    }
+
     private fun testOmni() {
         val url = fields[0].text?.toString()?.trim().orEmpty()
         val key = fields[1].text?.toString()?.trim().orEmpty()

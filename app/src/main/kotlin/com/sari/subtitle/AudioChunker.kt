@@ -9,8 +9,8 @@ import kotlin.math.ceil
 import kotlin.math.max
 
 /**
- * Low-latency overlapping windows. The window is intentionally short enough for live use;
- * longer 10-second windows would increase synchronization lag rather than improve it.
+ * Overlapping live windows. Four seconds gives speech recognition enough context to reduce
+ * sentence fragments while the overlap helps preserve words at chunk boundaries.
  */
 class AudioChunker(context: android.content.Context, private val sampleRate: Int = 16_000) {
     private val chunkSamples = sampleRate * CHUNK_MS.toInt() / 1000
@@ -99,8 +99,8 @@ class AudioChunker(context: android.content.Context, private val sampleRate: Int
 
     companion object {
         private const val TAG = "SariTranslate"
-        const val CHUNK_MS = 2_000L
-        const val OVERLAP_MS = 400L
+        const val CHUNK_MS = 4_000L
+        const val OVERLAP_MS = 800L
         const val STEP_MS = CHUNK_MS - OVERLAP_MS
         private const val RMS_THRESHOLD = 700.0
         fun chunkCount(durationMs: Long): Int = if (durationMs <= 0) 0 else max(1, ceil((durationMs - OVERLAP_MS).toDouble() / STEP_MS).toInt())

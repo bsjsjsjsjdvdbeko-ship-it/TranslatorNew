@@ -43,8 +43,6 @@ class TranslationClient(
             return OpenAiClient(apiKey, http).translate(text, source, target, context, quality)
         }
         val request = when (provider) {
-            TranslationProvider.OPENAI -> error("OPENAI handled above")
-            TranslationProvider.OMNIROUTE -> error("OMNIROUTE not yet supported")
             TranslationProvider.GROQ -> {
                 require(apiKey.isNotBlank()) { "أدخل مفتاح Groq API في الإعدادات." }
                 val system = buildGroqSystemPrompt(source, target, context)
