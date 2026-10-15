@@ -37,6 +37,15 @@
     <com.google.android.material.button.MaterialButton android:id="@+id/playUrlButton"
         android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginHorizontal="12dp"
         android:text="@string/player_play_url" app:icon="@drawable/ic_play" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingHorizontal="12dp">
+        <com.google.android.material.button.MaterialButton android:id="@+id/importMediaButton"
+            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:text="اختيار فيديو/صوت" app:icon="@drawable/ic_history" />
+        <Space android:layout_width="8dp" android:layout_height="1dp" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/generateSrtButton"
+            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:text="إنشاء ترجمة SRT" app:icon="@drawable/ic_translate" />
+    </LinearLayout>
 
     <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
         android:layout_marginTop="12dp" android:layout_marginBottom="8dp">

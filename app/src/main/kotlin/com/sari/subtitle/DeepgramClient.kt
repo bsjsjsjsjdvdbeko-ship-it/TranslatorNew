@@ -46,8 +46,31 @@ class DeepgramClient(
             val alt = alternatives?.optJSONObject(0)
             val text = alt?.optString("transcript").orEmpty().trim()
             if (text.isBlank()) throw IllegalStateException("أعاد Deepgram استجابة ناجحة لكن النص فارغ؛ قد لا يحتوي المقطع على كلام واضح.")
-            Log.i(TAG, "Deepgram STT result=success model=$selectedModel textChars=${text.length}")
-            TranscriptResult(text, emptyList())
+            // Prefer provider-native word timestamps; group consecutive words into sentence-like cues.
+            val words = alt?.optJSONArray("words")
+            val segments = mutableListOf<TranscriptSegment>()
+            if (words != null && words.length() > 0) {
+                var phrase = StringBuilder()
+                var phraseStart = -1.0
+                var phraseEnd = 0.0
+                for (i in 0 until words.length()) {
+                    val word = words.optJSONObject(i) ?: continue
+                    val token = word.optString("punctuated_word").ifBlank { word.optString("word") }.trim()
+                    val start = word.optDouble("start", Double.NaN)
+                    val end = word.optDouble("end", Double.NaN)
+                    if (token.isBlank() || !start.isFinite() || !end.isFinite() || end < start) continue
+                    if (phraseStart < 0) phraseStart = start
+                    if (phrase.isNotEmpty()) phrase.append(' ')
+                    phrase.append(token); phraseEnd = end
+                    if (token.matches(Regex(".*[.!?؟。]$")) || phrase.length >= 90 || i == words.length() - 1) {
+                        segments += TranscriptSegment(phraseStart * 1000.0, phraseEnd * 1000.0, phrase.toString().trim())
+                        phrase = StringBuilder(); phraseStart = -1.0
+                    }
+                }
+                if (phrase.isNotEmpty() && phraseStart >= 0) segments += TranscriptSegment(phraseStart * 1000.0, phraseEnd * 1000.0, phrase.toString().trim())
+            }
+            Log.i(TAG, "Deepgram STT result=success model=$selectedModel textChars=${text.length} timedSegments=${segments.size}")
+            TranscriptResult(text, segments)
         } catch (e: Exception) {
             Log.e(TAG, "Deepgram STT result=parse_error responseChars=${raw.length} exception=${e.javaClass.simpleName}", e)
             throw IllegalStateException("نجح اتصال Deepgram لكن تعذر تحليل استجابة تحويل الصوت. افحص إصدار الاستجابة وسجل التشخيص.", e)

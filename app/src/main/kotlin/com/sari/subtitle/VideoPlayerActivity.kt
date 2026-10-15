@@ -26,12 +26,23 @@ import com.google.android.material.button.MaterialButton
 @OptIn(UnstableApi::class)
 class VideoPlayerActivity : AppCompatActivity() {
     private var player: ExoPlayer? = null
+    private var selectedMediaUri: Uri? = null
+    private var currentMediaUri: Uri? = null
     private lateinit var urlInput: EditText
     private lateinit var subtitleInput: EditText
     private lateinit var drmLicenseInput: EditText
     private lateinit var status: TextView
     private lateinit var playerView: PlayerView
     private val subtitleHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    private val mediaPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            selectedMediaUri = uri
+            urlInput.setText(uri.toString())
+            playMediaUri(uri)
+        }
+    }
 
     private val projectionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
@@ -56,7 +67,9 @@ class VideoPlayerActivity : AppCompatActivity() {
         findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.playerBack)
             .setNavigationOnClickListener { finish() }
         findViewById<MaterialButton>(R.id.playUrlButton).setOnClickListener { playOrRouteUrl() }
-        findViewById<MaterialButton>(R.id.loadSubtitleButton).setOnClickListener { playOrRouteUrl() }
+        findViewById<MaterialButton>(R.id.loadSubtitleButton).setOnClickListener { reloadWithSubtitle() }
+        findViewById<MaterialButton>(R.id.importMediaButton).setOnClickListener { mediaPicker.launch(arrayOf("video/*", "audio/*", "application/octet-stream")) }
+        findViewById<MaterialButton>(R.id.generateSrtButton).setOnClickListener { generateSubtitles() }
         findViewById<MaterialButton>(R.id.startPlayerTranslationButton).setOnClickListener { requestTranslation() }
         findViewById<MaterialButton>(R.id.openSourceButton).setOnClickListener { openSource() }
         urlInput.setText(intent.getStringExtra(EXTRA_URL).orEmpty())
@@ -99,58 +112,108 @@ class VideoPlayerActivity : AppCompatActivity() {
 
     private fun playOrRouteUrl() {
         val raw = urlInput.text.toString().trim()
+        val parsed = runCatching { Uri.parse(raw) }.getOrNull()
+        if (parsed != null && parsed.scheme?.lowercase() in setOf("content", "file")) {
+            selectedMediaUri = parsed
+            playMediaUri(parsed)
+            return
+        }
+        selectedMediaUri = null
         val resolved = VideoPlatformResolver.resolve(raw)
         if (resolved == null) {
             urlInput.error = getString(R.string.player_invalid_url)
             return
         }
         if (!resolved.isDirectMedia) {
+            currentMediaUri = null
             status.text = getString(R.string.player_platform_page, VideoPlatformResolver.displayName(resolved.platform))
             startActivity(Intent(this, BrowserActivity::class.java).putExtra(BrowserActivity.EXTRA_URL, resolved.uri.toString()))
             return
         }
-        val mediaUri = resolved.uri
-        val subtitle = subtitleConfiguration()
-        val drmLicenseUri = drmLicenseUriOrNull()
-        val mediaItemBuilder = MediaItem.Builder()
-            .setUri(mediaUri)
-            .setMimeType(VideoPlatformResolver.mimeTypeFor(resolved))
+        playMediaUri(resolved.uri)
+    }
 
-        if (subtitle != null) {
-            mediaItemBuilder.setSubtitleConfigurations(listOf(subtitle))
+    private fun playMediaUri(mediaUri: Uri, subtitleUri: Uri? = subtitleUriFromField()) {
+        currentMediaUri = mediaUri
+        val previousPosition = player?.currentPosition ?: 0L
+        val wasPlaying = player?.isPlaying ?: true
+        val mediaItemBuilder = MediaItem.Builder().setUri(mediaUri)
+        val extension = mediaUri.lastPathSegment.orEmpty().substringAfterLast('.', "").lowercase()
+        val mime = when (extension) {
+            "mp4" -> "video/mp4"; "m4v" -> "video/x-m4v"; "webm" -> "video/webm"
+            "m3u8" -> "application/x-mpegURL"; "mpd" -> "application/dash+xml"
+            "mp3" -> "audio/mpeg"; "m4a" -> "audio/mp4"; "wav" -> "audio/wav"; "ogg" -> "audio/ogg"
+            else -> contentResolver.getType(mediaUri)
         }
-
-        if (drmLicenseUri != null) {
+        if (mime != null) mediaItemBuilder.setMimeType(mime)
+        val subtitle = subtitleUri?.let { subtitleConfiguration(it) }
+        if (subtitle != null) mediaItemBuilder.setSubtitleConfigurations(listOf(subtitle))
+        val drmLicense = drmLicenseUriOrNull()
+        if (drmLicense != null) {
             mediaItemBuilder.setDrmConfiguration(
                 MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
-                    .setLicenseUri(drmLicenseUri)
-                    .setMultiSession(false)
-                    .build()
+                    .setLicenseUri(drmLicense).setMultiSession(false).build()
             )
-            status.text = getString(R.string.player_drm_configured)
         }
-
-        val mediaItem = mediaItemBuilder.build()
         try {
-            player?.setMediaItem(mediaItem)
+            player?.setMediaItem(mediaItemBuilder.build())
             player?.prepare()
-            player?.playWhenReady = true
-            if (drmLicenseUri == null) {
-                status.text = if (subtitle != null) getString(R.string.player_subtitle_loaded) else getString(R.string.player_loading)
+            if (previousPosition > 0L) player?.seekTo(previousPosition)
+            player?.playWhenReady = wasPlaying
+            status.text = when {
+                drmLicense != null -> getString(R.string.player_drm_configured)
+                subtitle != null -> "تم تحميل الفيديو وملف الترجمة."
+                else -> getString(R.string.player_loading)
             }
         } catch (e: Exception) {
             status.text = getString(R.string.player_error, e.message ?: "unknown")
         }
     }
 
-    private fun subtitleConfiguration(): MediaItem.SubtitleConfiguration? {
+    private fun reloadWithSubtitle() {
+        val media = currentMediaUri ?: selectedMediaUri
+        if (media == null) { playOrRouteUrl(); return }
+        val sub = subtitleUriFromField()
+        if (sub == null) { status.text = "أدخل رابط SRT/VTT أو أنشئ ملف ترجمة أولاً."; return }
+        playMediaUri(media, sub)
+    }
+
+    private fun subtitleUriFromField(): Uri? {
         val raw = subtitleInput.text.toString().trim()
         if (raw.isBlank()) return null
-        val uri = VideoPlatformResolver.resolve(raw)?.uri ?: return null
-        val ext = uri.path.orEmpty().substringAfterLast('.', "").lowercase()
-        val mime = when (ext) {
-            "vtt" -> MimeTypes.TEXT_VTT
-            "srt" -> MimeTypes.APPLICATION_SUBRIP
+        val parsed = runCatching { Uri.parse(raw) }.getOrNull() ?: return null
+        if (parsed.scheme?.lowercase() in setOf("content", "file")) return parsed
+        return VideoPlatformResolver.resolve(raw)?.uri
+    }
+
+    private fun generateSubtitles() {
+        val media = selectedMediaUri ?: currentMediaUri ?: run {
+            status.text = "اختر ملف فيديو/صوت، أو أدخل رابط وسائط مباشر يدعم الوصول إلى مسار الصوت."
+            return
+        }
+        findViewById<MaterialButton>(R.id.generateSrtButton).isEnabled = false
+        lifecycleScope.launch {
+            try {
+                val srtUri = LocalSubtitleProcessor(this@VideoPlayerActivity).prepare(media) { message ->
+                    runOnUiThread { status.text = message }
+                }
+                subtitleInput.setText(srtUri)
+                playMediaUri(media, Uri.parse(srtUri))
+                status.text = "اكتملت الترجمة وحُفظ ملف SRT في Downloads/SariSubtitle."
+                Toast.makeText(this@VideoPlayerActivity, "تم إنشاء ملف الترجمة", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                status.text = "تعذرت معالجة الوسائط: ${e.message ?: e.javaClass.simpleName}"
+            } finally {
+                findViewById<MaterialButton>(R.id.generateSrtButton).isEnabled = true
+            }
+        }
+    }
+
+    private fun subtitleConfiguration(uri: Uri): MediaItem.SubtitleConfiguration? {
+        val ext = uri.lastPathSegment.orEmpty().substringAfterLast('.', "").lowercase()
+        val mime = when {
+            ext == "vtt" -> MimeTypes.TEXT_VTT
+            ext == "srt" || uri.scheme.equals("content", true) -> MimeTypes.APPLICATION_SUBRIP
             else -> return null
         }
         return MediaItem.SubtitleConfiguration.Builder(uri)
