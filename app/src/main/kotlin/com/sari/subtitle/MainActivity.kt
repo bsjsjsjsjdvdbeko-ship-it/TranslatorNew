@@ -25,6 +25,28 @@ import com.google.android.material.materialswitch.MaterialSwitch
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
+
+    private val openMediaDocument =
+        registerForActivityResult(
+            ActivityResultContracts.OpenDocument()
+        ) { uri: Uri? ->
+            if (uri != null) {
+                try {
+                    contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (_: SecurityException) {}
+
+                startActivity(
+                    Intent(this, VideoPlayerActivity::class.java).apply {
+                        putExtra("EXTRA_URI", uri.toString())
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                )
+            }
+        }
+
     private lateinit var status: TextView
     private lateinit var latest: TextView
     private lateinit var captureFab: FloatingActionButton
@@ -87,6 +109,10 @@ class MainActivity : AppCompatActivity() {
         overlaySwitch = findViewById(R.id.overlaySwitch)
         statusDot = findViewById(R.id.statusDot)
         findViewById<View>(R.id.settingsShortcut).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
+
+        findViewById<View>(R.id.chooseVideoButton).setOnClickListener {
+            openMediaDocument.launch(arrayOf("video/*", "audio/*"))
+        }
         findViewById<View>(R.id.openVideoPlayerButton).setOnClickListener {
             val url = findViewById<TextInputEditText>(R.id.homeUrlInput).text?.toString()?.trim().orEmpty()
             if (url.isBlank()) startActivity(Intent(this, BrowserActivity::class.java))

@@ -61,7 +61,15 @@
                             <Space android:layout_width="8dp" android:layout_height="1dp"/>
                             <com.google.android.material.button.MaterialButton android:id="@+id/openBrowserButton" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:text="@string/open_browser"/>
                         </LinearLayout>
-                        <com.google.android.material.button.MaterialButton android:id="@+id/openVideoPlayerButton" style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="4dp" android:text="@string/open_video_player" app:icon="@drawable/ic_play" app:iconGravity="textStart"/>
+                        <com.google.android.material.button.MaterialButton
+            android:id="@+id/chooseVideoButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:text="اختيار فيديو/صوت من الهاتف"
+            app:icon="@drawable/ic_mic" />
+
+        <com.google.android.material.button.MaterialButton android:id="@+id/openVideoPlayerButton" style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="4dp" android:text="@string/open_video_player" app:icon="@drawable/ic_play" app:iconGravity="textStart"/>
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 

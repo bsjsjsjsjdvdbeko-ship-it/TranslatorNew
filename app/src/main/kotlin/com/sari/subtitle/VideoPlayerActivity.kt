@@ -72,7 +72,12 @@ class VideoPlayerActivity : AppCompatActivity() {
         findViewById<MaterialButton>(R.id.generateSrtButton).setOnClickListener { generateSubtitles() }
         findViewById<MaterialButton>(R.id.startPlayerTranslationButton).setOnClickListener { requestTranslation() }
         findViewById<MaterialButton>(R.id.openSourceButton).setOnClickListener { openSource() }
-        urlInput.setText(intent.getStringExtra(EXTRA_URL).orEmpty())
+        val fileUri = intent.getStringExtra(EXTRA_URI)
+        if (fileUri != null && fileUri.isNotBlank()) {
+            urlInput.setText(fileUri)
+        } else {
+            urlInput.setText(intent.getStringExtra(EXTRA_URL).orEmpty())
+        }
         createPlayer()
         lifecycleScope.launch {
             LiveSubtitleBus.current.collect { item ->
@@ -257,5 +262,5 @@ class VideoPlayerActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    companion object { const val EXTRA_URL = "video_url" }
+    companion object { const val EXTRA_URL = "video_url"; const val EXTRA_URI = "EXTRA_URI" }
 }
