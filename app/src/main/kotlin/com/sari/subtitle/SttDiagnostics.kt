@@ -34,17 +34,43 @@ internal object SttDiagnostics {
                 if (String(riff, Charsets.US_ASCII) != "RIFF" || String(wave, Charsets.US_ASCII) != "WAVE") {
                     return WavInfo(false, length, problem = "missing RIFF/WAVE signature")
                 }
-                raf.seek(22)
+                raf.seek(20)
+                val audioFormat = readU16LE(raf)
                 val channels = readU16LE(raf)
                 val sampleRate = readU32LE(raf).toInt()
-                raf.skipBytes(6) // byte rate (4) + block align (2)
+                val byteRate = readU32LE(raf)
+                val blockAlign = readU16LE(raf)
                 val bits = readU16LE(raf)
                 raf.seek(40)
                 val dataBytes = readU32LE(raf)
-                val actualDataBytes = (length - 44L).coerceAtLeast(0L)
-                val valid = channels > 0 && sampleRate > 0 && bits == 16 && dataBytes > 0 && actualDataBytes > 0 && dataBytes <= actualDataBytes
-                WavInfo(valid, length, sampleRate, channels, bits, dataBytes,
-                    if (valid) null else "invalid PCM WAV format or no audio data")
+                val expectedByteRate = sampleRate.toLong() * channels * (bits / 8)
+                val expectedBlockAlign = channels * (bits / 8)
+                val expectedFileLength = 44L + dataBytes
+                var anyNonZeroSample = false
+                val bytesToScan = minOf(dataBytes, length - 44L)
+                raf.seek(44)
+                var remaining = bytesToScan
+                val scan = ByteArray(8192)
+                while (remaining > 0 && !anyNonZeroSample) {
+                    val n = raf.read(scan, 0, minOf(scan.size.toLong(), remaining).toInt())
+                    if (n <= 0) break
+                    for (i in 0 until n) if (scan[i].toInt() != 0) { anyNonZeroSample = true; break }
+                    remaining -= n
+                }
+                val valid = audioFormat == 1 && channels == 1 && sampleRate in 8_000..192_000 && bits == 16 &&
+                    byteRate == expectedByteRate && blockAlign == expectedBlockAlign && dataBytes > 0 &&
+                    dataBytes % expectedBlockAlign.coerceAtLeast(1) == 0L && expectedFileLength == length && anyNonZeroSample
+                val problem = when {
+                    audioFormat != 1 -> "WAV encoding is not PCM"
+                    channels != 1 -> "expected mono WAV but found $channels channels"
+                    bits != 16 -> "expected 16-bit PCM"
+                    dataBytes <= 0 || length <= 44L -> "WAV has no audio payload"
+                    expectedFileLength != length -> "WAV data length does not match file length"
+                    dataBytes % expectedBlockAlign.coerceAtLeast(1) != 0L -> "WAV payload is not aligned to complete PCM samples"
+                    !anyNonZeroSample -> "WAV audio payload is all zero"
+                    else -> "invalid PCM WAV header"
+                }
+                WavInfo(valid, length, sampleRate, channels, bits, dataBytes, if (valid) null else problem)
             }
         } catch (e: Exception) {
             WavInfo(false, length, problem = "WAV header read failed: ${e.javaClass.simpleName}")
@@ -60,7 +86,7 @@ internal object SttDiagnostics {
         val chain = generateSequence(error) { it.cause }.toList()
         val http = chain.filterIsInstance<SttHttpException>().firstOrNull()
         if (http != null) {
-            val detail = http.responseBody.take(240).replace(Regex("[\\r\\n\\t]+"), " ")
+            val detail = safeServerDetail(http.responseBody).take(240).replace(Regex("[\\r\\n\\t]+"), " ")
             val mapped = when (http.statusCode) {
                 401 -> "مفتاح API غير صحيح أو غير مصرح به (HTTP 401)"
                 403 -> "رفض المزود الطلب (HTTP 403؛ تحقق من صلاحيات الحساب أو الحجب الشبكي)"
@@ -83,6 +109,28 @@ internal object SttDiagnostics {
         return message ?: "حدث خطأ غير معروف أثناء تحويل الصوت (${error.javaClass.simpleName})."
     }
 
+    fun safeServerDetail(body: String): String {
+        if (body.isBlank()) return ""
+        return body
+            .replace(Regex("""(?i)(authorization\s*[:=]\s*(?:bearer|token)\s+)[^\s"']+""")) { it.groupValues[1] + "[REDACTED]" }
+            .replace(Regex("""(?i)(api[_-]?key|token|secret)("?\s*[:=]\s*"?)[^\s,}"]+""")) { it.groupValues[1] + it.groupValues[2] + "[REDACTED]" }
+            .replace(Regex("[\\r\\n\\t]+"), " ")
+            .take(400)
+    }
+
+    fun safeMessage(message: String?): String = safeServerDetail(message.orEmpty()).ifBlank { "no detail" }
+
+    fun isRetryableHttp(statusCode: Int): Boolean = statusCode == 408 || statusCode == 429 || statusCode in 500..599
+
+    fun retryAfterMillis(value: String?): Long? {
+        val text = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        text.toLongOrNull()?.let { return it.coerceIn(0L, 86_400L) * 1_000L }
+        return runCatching {
+            val whenRetry = java.time.ZonedDateTime.parse(text, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli()
+            (whenRetry - System.currentTimeMillis()).coerceAtLeast(0L)
+        }.getOrNull()
+    }
+
     private fun readU16LE(raf: RandomAccessFile): Int {
         val a = raf.read(); val b = raf.read()
         if (a < 0 || b < 0) throw java.io.EOFException()
@@ -99,5 +147,6 @@ internal object SttDiagnostics {
 internal class SttHttpException(
     val statusCode: Int,
     val responseBody: String,
-    provider: String
+    private val provider: String,
+    val retryAfterMs: Long? = null
 ) : java.io.IOException("$provider HTTP $statusCode: ${responseBody.take(240)}")

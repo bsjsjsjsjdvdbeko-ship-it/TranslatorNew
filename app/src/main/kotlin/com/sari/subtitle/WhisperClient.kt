@@ -1,9 +1,7 @@
 package com.sari.subtitle
 
 import android.util.Log
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -14,42 +12,41 @@ import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-/** Groq Speech-to-Text client. Returns segment timestamps when the API provides them. */
+/** Groq Speech-to-Text client. Returns segment timestamps when available. */
 class WhisperClient(private val apiKey: String, private val http: OkHttpClient = defaultClient()) : SttClient {
     override suspend fun transcribe(audioFile: File, language: String, prompt: String): TranscriptResult =
         transcribeDetailed(audioFile, language, prompt)
 
     suspend fun transcribeDetailed(audioFile: File, language: String = "ar", prompt: String = ""): TranscriptResult = withContext(Dispatchers.IO) {
-        require(apiKey.isNotBlank()) { "أدخل مفتاح Groq API من الإعدادات." }
+        val key = apiKey.trim()
+        require(key.isNotBlank()) { "أدخل مفتاح Groq API من الإعدادات." }
+        require(!key.contains('\r') && !key.contains('\n')) { "مفتاح Groq يحتوي على محارف غير صالحة؛ أعد حفظه من الإعدادات." }
         val wav = SttDiagnostics.inspectWav(audioFile)
-        Log.d(TAG, "Groq request file=${audioFile.name} size=${wav.sizeBytes} wavValid=${wav.valid} sampleRate=${wav.sampleRate} channels=${wav.channels} bits=${wav.bitsPerSample} dataBytes=${wav.dataBytes}")
+        Log.d(TAG, "Groq STT request model=${modelFor(prompt)} file=${audioFile.name} sizeBytes=${wav.sizeBytes} wavValid=${wav.valid} sampleRate=${wav.sampleRate} channels=${wav.channels} bits=${wav.bitsPerSample} dataBytes=${wav.dataBytes} language=${SttLanguagePolicy.forGroq(language) ?: "omitted"}")
         require(wav.valid) { "ملف WAV غير صالح أو لا يحتوي بيانات صوتية: ${wav.problem ?: "تحقق من الالتقاط"}." }
-        val model = if (prompt.startsWith("[HIGH_ACCURACY]")) "whisper-large-v3" else "whisper-large-v3-turbo"
+        val model = modelFor(prompt)
         val body = MultipartBody.Builder().setType(MultipartBody.FORM)
             .addFormDataPart("model", model)
             .addFormDataPart("response_format", "verbose_json")
             .addFormDataPart("temperature", "0")
             .apply { if (prompt.isNotBlank()) addFormDataPart("prompt", prompt.take(3_000)) }
             .addFormDataPart("timestamp_granularities[]", "segment")
-            .apply { if (language.isNotBlank() && language != "auto") addFormDataPart("language", language) }
+            .apply { SttLanguagePolicy.forGroq(language)?.let { addFormDataPart("language", it) } }
             .addFormDataPart("file", audioFile.name, audioFile.asRequestBody("audio/wav".toMediaType()))
             .build()
         val request = Request.Builder()
-            .url("https://api.groq.com/openai/v1/audio/transcriptions")
-            .header("Authorization", "Bearer $apiKey")
+            .url(ENDPOINT)
+            .header("Authorization", "Bearer $key")
             .post(body)
             .build()
-        retry(request) { raw -> parseResult(raw) }
-    }
-
-    private fun parseResult(raw: String): TranscriptResult {
-        val json = JSONObject(raw)
-        val text = json.optString("text").trim()
-        if (text.isBlank()) error("لم يُرجع Groq نصاً صوتياً.")
-        val segments = mutableListOf<TranscriptSegment>()
-        val array = json.optJSONArray("segments")
-        if (array != null) {
-            for (i in 0 until array.length()) {
+        val raw = SttRequestExecutor.execute("Groq", http, request)
+        try {
+            val json = JSONObject(raw)
+            val text = json.optString("text").trim()
+            if (text.isBlank()) throw IllegalStateException("أعاد Groq استجابة ناجحة لكن النص فارغاً.")
+            val segments = mutableListOf<TranscriptSegment>()
+            val array = json.optJSONArray("segments")
+            if (array != null) for (i in 0 until array.length()) {
                 val item = array.optJSONObject(i) ?: continue
                 val start = item.optDouble("start", Double.NaN)
                 val end = item.optDouble("end", Double.NaN)
@@ -58,43 +55,18 @@ class WhisperClient(private val apiKey: String, private val http: OkHttpClient =
                     segments += TranscriptSegment(start * 1000.0, end * 1000.0, segmentText)
                 }
             }
+            TranscriptResult(text, segments)
+        } catch (e: Exception) {
+            Log.e(TAG, "Groq STT result=parse_error responseChars=${raw.length} exception=${e.javaClass.simpleName}", e)
+            throw IllegalStateException("نجح اتصال Groq لكن تعذر تحليل استجابة تحويل الصوت. أعد المحاولة أو افحص سجل التشخيص.", e)
         }
-        return TranscriptResult(text, segments)
     }
 
-    private suspend fun <T> retry(request: Request, parse: (String) -> T): T {
-        var last: Exception? = null
-        repeat(3) { i ->
-            try {
-                http.newCall(request).execute().use { response ->
-                    val raw = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) {
-                        val failure = SttHttpException(response.code, raw, "Groq")
-                        Log.e(TAG, "Groq HTTP ${response.code}: ${raw.take(400)}")
-                        if (response.code !in listOf(408, 429) && response.code !in 500..599) throw failure
-                        throw failure
-                    }
-                    Log.d(TAG, "Groq HTTP ${response.code}; responseBytes=${raw.length}")
-                    return parse(raw)
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                last = e
-                Log.e(TAG, "Groq attempt ${i + 1}/3 failed: ${SttDiagnostics.messageFor(e)}", e)
-                val httpError = generateSequence<Throwable>(e) { it.cause }.filterIsInstance<SttHttpException>().firstOrNull()
-                if (httpError != null && httpError.statusCode !in listOf(408, 429) && httpError.statusCode !in 500..599) {
-                    throw IllegalStateException(SttDiagnostics.messageFor(e), e)
-                }
-                if (i < 2) delay(500L * (i + 1))
-            }
-        }
-        val failure = last ?: IllegalStateException("Unknown Groq error")
-        throw IllegalStateException(SttDiagnostics.messageFor(failure), failure)
-    }
+    private fun modelFor(prompt: String) = if (prompt.startsWith("[HIGH_ACCURACY]")) "whisper-large-v3" else "whisper-large-v3-turbo"
 
     companion object {
         private const val TAG = "SariTranslate"
+        const val ENDPOINT = "https://api.groq.com/openai/v1/audio/transcriptions"
         fun defaultClient() = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(90, TimeUnit.SECONDS)

@@ -115,35 +115,68 @@ class TranslationClient(
     }
 
     private suspend fun executeTextRequest(request: Request): String {
-        var last: Exception? = null
-        repeat(3) { i ->
+        var last: Throwable? = null
+        val maxAttempts = 3
+        var raw: String? = null
+        for (index in 0 until maxAttempts) {
+            val attempt = index + 1
             try {
-                return http.newCall(request).execute().use { response ->
-                    val raw = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) error("HTTP ${response.code}: ${raw.take(180)}")
-                    val result = when (provider) {
-                        TranslationProvider.OPENAI -> error("OPENAI handled above")
-                        TranslationProvider.OMNIROUTE -> error("OMNIROUTE not yet supported")
-                        TranslationProvider.GROQ -> JSONObject(raw).getJSONArray("choices").getJSONObject(0)
-                            .getJSONObject("message").getString("content").trim()
-                        TranslationProvider.GOOGLE -> JSONObject(raw).getJSONObject("data").getJSONArray("translations")
-                            .getJSONObject(0).getString("translatedText").trim()
-                        TranslationProvider.MYMEMORY -> {
-                            val json = JSONObject(raw)
-                            if (json.optString("responseStatus") != "200") error("خدمة MyMemory لم تقبل الطلب: ${json.optString("responseDetails")}")
-                            json.getJSONObject("responseData").getString("translatedText").trim()
-                        }
+                http.newCall(request).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        val failure = SttHttpException(
+                            response.code,
+                            SttDiagnostics.safeServerDetail(body),
+                            "${provider.name} translation",
+                            SttDiagnostics.retryAfterMillis(response.header("Retry-After"))
+                        )
+                        val retryable = SttDiagnostics.isRetryableHttp(response.code)
+                        if (!retryable || attempt == maxAttempts) throw failure
+                        last = failure
+                        val waitMs = if (response.code == 429 && failure.retryAfterMs != null)
+                            failure.retryAfterMs.coerceIn(250L, 5_000L) else 400L * attempt
+                        delay(waitMs)
+                    } else {
+                        raw = body
+                        return@use
                     }
-                    if (result.isBlank()) error("خدمة الترجمة أعادت نصاً فارغاً.")
-                    result
                 }
-            } catch (e: Exception) {
+                if (raw != null) break
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: SttHttpException) {
+                throw IllegalStateException(SttDiagnostics.messageFor(e), e)
+            } catch (e: java.io.IOException) {
                 last = e
-                if (i < 2) delay(500L * (i + 1))
+                if (attempt == maxAttempts) break
+                delay(400L * attempt)
             }
         }
-        throw IllegalStateException("فشلت الترجمة بعد 3 محاولات. تحقق من الإنترنت ومفاتيح الخدمة.", last)
+        val responseText = raw ?: run {
+            val cause = last ?: java.io.IOException("No response")
+            throw IllegalStateException(SttDiagnostics.messageFor(cause), cause)
+        }
+        // Parse only after a successful HTTP response; malformed JSON is not a network retry.
+        try {
+            val result = when (provider) {
+                TranslationProvider.GROQ -> JSONObject(responseText).getJSONArray("choices").getJSONObject(0)
+                    .getJSONObject("message").getString("content").trim()
+                TranslationProvider.GOOGLE -> JSONObject(responseText).getJSONObject("data").getJSONArray("translations")
+                    .getJSONObject(0).getString("translatedText").trim()
+                TranslationProvider.MYMEMORY -> {
+                    val json = JSONObject(responseText)
+                    if (json.optString("responseStatus") != "200") error("خدمة MyMemory لم تقبل الطلب: ${SttDiagnostics.safeServerDetail(json.optString("responseDetails"))}")
+                    json.getJSONObject("responseData").getString("translatedText").trim()
+                }
+                else -> error("مزود الترجمة غير مدعوم: $provider")
+            }
+            if (result.isBlank()) error("خدمة الترجمة أعادت نصاً فارغاً.")
+            return result
+        } catch (e: Exception) {
+            throw IllegalStateException("وصل رد من خدمة الترجمة لكن تعذر تحليل نتيجته: ${e.javaClass.simpleName}.", e)
+        }
     }
+
 }
 
 data class TranslationContext(

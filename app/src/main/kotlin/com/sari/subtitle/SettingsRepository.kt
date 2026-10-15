@@ -91,25 +91,25 @@ class SettingsRepository(context: Context) {
         hedgeDelayMs: Long = 0L
     ) = withContext(Dispatchers.IO) {
         val p = prefs ?: throw IllegalStateException("تعذر تفعيل التخزين المشفر على هذا الجهاز.")
-        p.edit()
+        val committed = p.edit()
             .putInt("provider", provider.coerceIn(PROVIDER_GROQ, PROVIDER_OPENAI))
             .putBoolean("providerSchemaV2", true)
-            .putString("speechKey", speechKey)
-            .putString("translationKey", translationKey)
+            .putString("speechKey", speechKey.trim())
+            .putString("translationKey", translationKey.trim())
             .putString("source", source)
             .putString("target", target)
             .putInt("font", font.coerceIn(12, 48))
             .putInt("opacity", opacity.coerceIn(0, 100))
             .putString("subtitlePosition", subtitlePosition)
             .putString("email", email)
-            .putString("speechLanguage", speechLanguage)
+            .putString("speechLanguage", speechLanguage.trim())
             .putBoolean("contextAwareTranslation", contextAwareTranslation)
             .putBoolean("translationMemoryEnabled", translationMemoryEnabled)
             .putString("glossary", glossary)
             .putString("contextPrompt", contextPrompt)
             .putInt("translationQuality", translationQuality.coerceIn(QUALITY_FAST, QUALITY_HUMAN))
             .putString("omniRouteBaseUrl", omniRouteBaseUrl)
-            .putString("omniRouteKey", omniRouteKey)
+            .putString("omniRouteKey", omniRouteKey.trim())
             .putString("omniRouteSttModels", omniRouteSttModels)
             .putString("omniRouteTranslationModel", omniRouteTranslationModel)
             .putString("omniRouteTranslationModels", omniRouteTranslationModels)
@@ -124,7 +124,8 @@ class SettingsRepository(context: Context) {
             .putLong("benchmarkIntervalMs", benchmarkIntervalMs.coerceAtLeast(60_000L))
             .putBoolean("hedgedFailoverEnabled", hedgedFailoverEnabled)
             .putLong("hedgeDelayMs", hedgeDelayMs.coerceIn(0L, 2_000L))
-            .apply()
+            .commit()
+        check(committed) { "تعذر حفظ الإعدادات المشفّرة على الجهاز؛ تحقق من مساحة التخزين ثم أعد المحاولة." }
     }
 
     suspend fun load(): AppSettings = withContext(Dispatchers.IO) {
@@ -147,8 +148,8 @@ class SettingsRepository(context: Context) {
             opacity = p.getInt("opacity", 82),
             subtitlePosition = p.getString("subtitlePosition", "bottom").orEmpty(),
             myMemoryEmail = p.getString("email", "").orEmpty(),
-            speechLanguage = p.getString("speechLanguage", "auto").orEmpty(),
-            sttProvider = p.getString("sttProvider", "groq").orEmpty(),
+            speechLanguage = p.getString("speechLanguage", "auto").orEmpty().trim(),
+            sttProvider = p.getString("sttProvider", "groq").orEmpty().trim().lowercase(),
             deepgramKey = p.getString("deepgramKey", "").orEmpty(),
             openAiKey = p.getString("openAiKey", "").orEmpty(),
             contextAwareTranslation = p.getBoolean("contextAwareTranslation", true),
@@ -177,11 +178,12 @@ class SettingsRepository(context: Context) {
 
     suspend fun saveSttSettings(sttProvider: String, deepgramKey: String, openAiKey: String) = withContext(Dispatchers.IO) {
         val p = prefs ?: throw IllegalStateException("تعذر تفعيل التخزين المشفر على هذا الجهاز.")
-        p.edit()
-            .putString("sttProvider", sttProvider)
+        val committed = p.edit()
+            .putString("sttProvider", sttProvider.trim().lowercase())
             .putString("deepgramKey", deepgramKey.trim())
             .putString("openAiKey", openAiKey.trim())
-            .apply()
+            .commit()
+        check(committed) { "تعذر حفظ إعدادات STT المشفّرة على الجهاز؛ أعد المحاولة." }
     }
 
 

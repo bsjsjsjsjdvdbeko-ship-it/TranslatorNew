@@ -14,6 +14,7 @@ class TranslationRepository(private val context: Context) {
 
     suspend fun translateAudio(audioFile: File, capturedAtElapsedMs: Long = android.os.SystemClock.elapsedRealtime(), durationMs: Long = AudioChunker.CHUNK_MS): TranslationEntity = withContext(Dispatchers.IO) {
         Log.d(TAG, "=== Start ===")
+        Log.d(TAG, "captured durationMs=$durationMs capturedAtElapsedMs=$capturedAtElapsedMs")
         Log.d(TAG, "audioFile.exists=${audioFile.exists()}")
         Log.d(TAG, "audioFile.size=${audioFile.length()}")
         Log.d(TAG, "audioFile.absolutePath=${audioFile.absolutePath}")
@@ -28,7 +29,7 @@ class TranslationRepository(private val context: Context) {
 
         val preContext = if (settings.contextAwareTranslation) episodeContext.snapshot() else TranslationContext()
         val whisperPrompt = buildWhisperPrompt(settings, preContext)
-        val configuredSttProvider = settings.sttProvider.trim().lowercase()
+        val configuredSttProvider = SttProviderPolicy.normalize(settings.sttProvider)
         val whisperResult = try { if (settings.provider == SettingsRepository.PROVIDER_OMNIROUTE) {
             Log.i(TAG, "STT route=OmniRoute; configured local STT provider is ignored while translation provider is OmniRoute")
             if (settings.smartRoutingEnabled || settings.adaptiveRoutingEnabled) {
@@ -54,17 +55,17 @@ class TranslationRepository(private val context: Context) {
             }
         } else {
             when (configuredSttProvider) {
-                "deepgram-nova3", "deepgram-nova-3", "deepgram_nova3", "nova-3" -> {
+                "deepgram-nova3" -> {
                     Log.i(TAG, "STT route=Deepgram Nova-3")
                     DeepgramClient(settings.deepgramKey, model = "nova-3")
                         .transcribe(audioFile, settings.speechLanguage, whisperPrompt)
                 }
-                "deepgram", "deepgram-nova2", "deepgram-nova-2", "nova-2" -> {
+                "deepgram-nova2" -> {
                     Log.i(TAG, "STT route=Deepgram Nova-2")
                     DeepgramClient(settings.deepgramKey, model = "nova-2")
                         .transcribe(audioFile, settings.speechLanguage, whisperPrompt)
                 }
-                "groq", "whisper", "groq-whisper" -> {
+                "groq" -> {
                     Log.i(TAG, "STT route=Groq Whisper")
                     WhisperClient(settings.speechKey).transcribeDetailed(audioFile, settings.speechLanguage, whisperPrompt)
                 }

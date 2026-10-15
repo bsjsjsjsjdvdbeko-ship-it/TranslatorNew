@@ -4,9 +4,9 @@ object SubtitleParser {
     fun parse(content: String): List<SubtitleCue> {
         val normalized = content.removePrefix("\uFEFF").replace("\r\n", "\n").replace('\r', '\n')
         val blocks = normalized.split(Regex("\n\\s*\n"))
-        val result = blocks.mapNotNull { parseBlock(it) }.sortedBy { it.startElapsedMs }
+        val result = blocks.mapNotNull { parseBlock(it) }.sortedBy { it.startMs }
         return result.fold(mutableListOf()) { acc, cue ->
-            if (acc.isEmpty() || cue.startElapsedMs >= acc.last().startElapsedMs) acc.add(cue)
+            if (acc.isEmpty() || cue.startMs >= acc.last().startMs) acc.add(cue)
             acc
         }
     }
@@ -25,7 +25,7 @@ object SubtitleParser {
             .replace(Regex("<[^>]+>"), "")
             .trim()
         if (text.isBlank() || end <= start) return null
-        return SubtitleCue(original = text, translated = "", startElapsedMs = start, endElapsedMs = end)
+        return SubtitleCue(start, end, text)
     }
 
     private fun parseTime(value: String): Long? {

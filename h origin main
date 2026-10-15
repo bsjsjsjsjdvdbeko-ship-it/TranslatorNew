@@ -1,0 +1,13 @@
+[1mdiff --git a/app/src/main/kotlin/com/sari/subtitle/WhisperClient.kt b/app/src/main/kotlin/com/sari/subtitle/WhisperClient.kt[m
+[1mindex b7d8fbf..7860211 100644[m
+[1m--- a/app/src/main/kotlin/com/sari/subtitle/WhisperClient.kt[m
+[1m+++ b/app/src/main/kotlin/com/sari/subtitle/WhisperClient.kt[m
+[36m@@ -82,7 +82,7 @@[m [mclass WhisperClient(private val apiKey: String, private val http: OkHttpClient =[m
+             } catch (e: Exception) {[m
+                 last = e[m
+                 Log.e(TAG, "Groq attempt ${i + 1}/3 failed: ${SttDiagnostics.messageFor(e)}", e)[m
+[31m-                val httpError = generateSequence(e) { it.cause }.filterIsInstance<SttHttpException>().firstOrNull()[m
+[32m+[m[32m                val httpError = generateSequence<Throwable>(e) { it.cause }.filterIsInstance<SttHttpException>().firstOrNull()[m
+                 if (httpError != null && httpError.statusCode !in listOf(408, 429) && httpError.statusCode !in 500..599) {[m
+                     throw IllegalStateException(SttDiagnostics.messageFor(e), e)[m
+                 }[m

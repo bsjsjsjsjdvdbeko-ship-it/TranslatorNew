@@ -44,8 +44,8 @@ class SettingsSttActivity : AppCompatActivity() {
         openAiKey = findViewById(R.id.openAiKeyInput)
         findViewById<MaterialButton>(R.id.getDeepgramKeyButton).setOnClickListener { openUrl("https://console.deepgram.com/") }
         findViewById<MaterialButton>(R.id.getOpenAiKeyButton).setOnClickListener { openUrl("https://platform.openai.com/api-keys") }
-        findViewById<MaterialButton>(R.id.testDeepgramButton).setOnClickListener { testKey("Deepgram", "https://api.deepgram.com/v1/projects", deepgramKey.text?.toString().orEmpty(), "Token") }
-        findViewById<MaterialButton>(R.id.testOpenAiButton).setOnClickListener { testKey("OpenAI", "https://api.openai.com/v1/models", openAiKey.text?.toString().orEmpty(), "Bearer") }
+        findViewById<MaterialButton>(R.id.testDeepgramButton).setOnClickListener { testKey("Deepgram", "https://api.deepgram.com/v1/projects", deepgramKey.text?.toString().orEmpty().trim(), "Token") }
+        findViewById<MaterialButton>(R.id.testOpenAiButton).setOnClickListener { testKey("OpenAI", "https://api.openai.com/v1/models", openAiKey.text?.toString().orEmpty().trim(), "Bearer") }
         findViewById<MaterialButton>(R.id.saveSttSettingsButton).setOnClickListener { save() }
         findViewById<MaterialButton>(R.id.downloadVoskButton).setOnClickListener { downloadVosk() }
         lifecycleScope.launch {
@@ -85,14 +85,15 @@ class SettingsSttActivity : AppCompatActivity() {
     }
 
     private fun testKey(name: String, url: String, key: String, scheme: String) {
-        if (key.isBlank()) {
+        val normalizedKey = key.trim()
+        if (normalizedKey.isBlank()) {
             Toast.makeText(this, getString(R.string.stt_test_failed, name, "أدخل المفتاح أولاً"), Toast.LENGTH_LONG).show()
             return
         }
         lifecycleScope.launch {
             try {
                 val code = withContext(Dispatchers.IO) {
-                    val request = Request.Builder().url(url).header("Authorization", "$scheme $key").get().build()
+                    val request = Request.Builder().url(url).header("Authorization", "$scheme $normalizedKey").get().build()
                     http.newCall(request).execute().use { it.code }
                 }
                 if (code in 200..299) Toast.makeText(this@SettingsSttActivity, getString(R.string.stt_test_ok, name), Toast.LENGTH_LONG).show()
